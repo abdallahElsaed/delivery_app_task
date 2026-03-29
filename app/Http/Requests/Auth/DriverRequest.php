@@ -1,0 +1,26 @@
+<?php
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class DriverRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     */
+    public function rules(): array
+    {
+        return [
+            'mobile' => [
+                'required',
+                // 'regex:/^05\d{8}$/' // todo: remove the comment
+            ],
+        ];
+    }
+}
