@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -130,23 +131,27 @@ return [
             'driver' => 'single',
             'path'   => storage_path('logs/notification.log'),
             'level'  => 'info',
+            'formatter' => JsonFormatter::class,
         ],
 
         'auth' => [
             'driver' => 'single',
             'path'   => storage_path('logs/auth.log'),
             'level'  => 'info',
+            'formatter' => JsonFormatter::class,
         ],
         'import' => [
             'driver' => 'daily',
             'path'   => storage_path('logs/import.log'),
             'level'  => 'debug',
             'days'   => env('LOG_DAILY_DAYS', 14),
+            'formatter' => JsonFormatter::class,
         ],
         'api' => [
             'driver' => 'single',
             'path'   => storage_path('logs/api.log'),
             'level'  => 'debug',
+            'formatter' => JsonFormatter::class,
         ],
     ],
 

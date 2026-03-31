@@ -28,11 +28,14 @@ class WhatsAppNotificationJop implements ShouldQueue
                 'body' => "Your OTP is: *{$this->otp}*. It expires in 5 minutes. ",
             ]);
             Log::channel('notification')->info('WhatsApp Notification Success', [
-                "Your OTP is: {$this->otp}. It expires in 5 minutes."
+                'mobile' => $this->mobile,
+                'channel' => 'whatsapp',
             ]);
         } catch (\Throwable $th) {
             Log::channel('notification')->error('WhatsApp Notification Error', [
-                $th->getMessage()
+                'mobile' => $this->mobile,
+                'channel' => 'whatsapp',
+                'error' => $th->getMessage(),
             ]);
         }
     }

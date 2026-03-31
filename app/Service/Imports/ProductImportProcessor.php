@@ -5,6 +5,7 @@ namespace App\Service\Imports;
 use App\Jobs\Import\ProcessProductImportChunk;
 use App\Models\ImportBatch;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 
 class ProductImportProcessor
 {
@@ -19,6 +20,12 @@ class ProductImportProcessor
             'format'   => $extension,
         ]);
         $batch->markAsProcessing();
+
+        Log::channel('import')->info('Import batch started', [
+            'batch_id' => $batch->id,
+            'filename' => $batch->filename,
+            'format'   => $extension,
+        ]);
 
         $strategy = $this->factory->make($extension);
 
@@ -46,9 +53,19 @@ class ProductImportProcessor
         Bus::batch($jobs)
             ->then(function () use ($batch) {
                 $batch->markAsCompleted();
+                Log::channel('import')->info('Import batch completed', [
+                    'batch_id'       => $batch->id,
+                    'total_rows'     => $batch->total_rows,
+                    'processed_rows' => $batch->processed_rows,
+                    'failed_rows'    => $batch->failed_rows,
+                ]);
             })
             ->catch(function () use ($batch) {
                 $batch->markAsFailed();
+                Log::channel('import')->error('Import batch failed', [
+                    'batch_id'    => $batch->id,
+                    'failed_rows' => $batch->failed_rows,
+                ]);
             })
             ->name("Import: {$batch->filename}")
             ->onQueue('imports')

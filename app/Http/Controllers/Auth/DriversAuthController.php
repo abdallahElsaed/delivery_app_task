@@ -20,7 +20,9 @@ class DriversAuthController extends Controller
     public function login(DriverRequest $request, LoginAction $loginAction): JsonResponse
     {
         try {
-            $loginAction->handle($request->validated()['mobile'], $this->driver);
+            $mobile = $request->validated()['mobile'];
+            $loginAction->handle($mobile, $this->driver);
+            Log::channel('auth')->info('OTP sent', ['mobile' => $mobile, 'guard' => 'driver']);
             return $this->successResponse([], 'I send the OTP to your sms and whatsApp');
         } catch (TooManyOtpAttemptsException $e) {
             Log::channel('auth')->error('To Many OTP Attempt Error', [
@@ -40,6 +42,7 @@ class DriversAuthController extends Controller
         $request = $request->validated();
         try {
             $data = $checkOtpAction->handle($request['mobile'], $request['otp'], $this->driver);
+            Log::channel('auth')->info('OTP verified', ['mobile' => $request['mobile'], 'user_id' => $data['user']->id, 'guard' => 'driver']);
             return $this->successResponse($data, 'You Logged In Successfully.');
         } catch (Exception $e) {
             Log::channel('auth')->error('Check OTP Error', [

@@ -3,6 +3,7 @@
 namespace App\Actions\Auth;
 
 use App\Exceptions\TooManyOtpAttemptsException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 
 class OtpRateLimiter
@@ -16,6 +17,7 @@ class OtpRateLimiter
 
         if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
             $availableIn = RateLimiter::availableIn($key);
+            Log::channel('auth')->warning('OTP send rate limited', ['mobile' => $mobile, 'retry_after' => $availableIn]);
             throw new TooManyOtpAttemptsException($availableIn);
         }
 

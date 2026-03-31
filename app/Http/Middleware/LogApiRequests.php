@@ -9,6 +9,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class LogApiRequests
 {
+    private const SENSITIVE_FIELDS = ['otp', 'password', 'password_confirmation', 'token'];
+
     public function handle(Request $request, Closure $next): Response
     {
         $startTime = microtime(true);
@@ -16,19 +18,26 @@ class LogApiRequests
         $response = $next($request);
 
         $statusCode = $response->getStatusCode();
+        $duration = round((microtime(true) - $startTime) * 1000, 2);
 
-        if ($statusCode >= 400) {
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-            Log::channel('api')->error('API Request Failed', [
-                'method'      => $request->method(),
-                'url'         => $request->fullUrl(),
-                'ip'          => $request->ip(),
-                'user_id'     => $request->user()?->id,
-                'user_type'   => $request->user() ? get_class($request->user()) : null,
-                'status_code' => $statusCode,
-                'duration_ms' => $duration,
-            ]);
-        }
+        $context = [
+            'method'      => $request->method(),
+            'url'         => $request->fullUrl(),
+            'ip'          => $request->ip(),
+            'user_id'     => $request->user()?->id,
+            'user_type'   => $request->user() ? get_class($request->user()) : null,
+            'status_code' => $statusCode,
+            'duration_ms' => $duration,
+            'payload'     => $request->except(self::SENSITIVE_FIELDS),
+        ];
+
+        $level = match (true) {
+            $statusCode >= 500 => 'error',
+            $statusCode >= 400 => 'warning',
+            default            => 'info',
+        };
+
+        Log::channel('api')->{$level}('API Request', $context);
 
         return $response;
     }

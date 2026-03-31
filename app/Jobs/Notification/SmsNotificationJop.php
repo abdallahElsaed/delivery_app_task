@@ -28,11 +28,14 @@ class SmsNotificationJop implements ShouldQueue
                 'body' => "Your OTP is: {$this->otp}. It expires in 5 minutes.",
             ]);
             Log::channel('notification')->info('SMS Notification Success', [
-                "Your OTP is: {$this->otp}. It expires in 5 minutes."
+                'mobile' => $this->mobile,
+                'channel' => 'sms',
             ]);
         } catch (\Throwable $th) {
             Log::channel('notification')->error('SMS Notification Error', [
-                $th->getMessage(),
+                'mobile' => $this->mobile,
+                'channel' => 'sms',
+                'error' => $th->getMessage(),
             ]);
         }
     }

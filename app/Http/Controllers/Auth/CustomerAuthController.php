@@ -19,7 +19,9 @@ class CustomerAuthController extends Controller
     public function login(CustomerRequest $request, LoginAction $loginAction): JsonResponse
     {
         try {
-            $loginAction->handle($request->validated()['mobile'], $this->customer);
+            $mobile = $request->validated()['mobile'];
+            $loginAction->handle($mobile, $this->customer);
+            Log::channel('auth')->info('OTP sent', ['mobile' => $mobile, 'guard' => 'customer']);
             return $this->successResponse([] ,'I send the OTP to your sms and whatsApp');
         } catch (TooManyOtpAttemptsException $e) {
             Log::channel('auth')->error('To Many OTP Attempt Error', [
@@ -39,6 +41,7 @@ class CustomerAuthController extends Controller
         $request = $request->validated();
         try {
             $data = $checkOtpAction->handle($request['mobile'], $request['otp'], $this->customer);
+            Log::channel('auth')->info('OTP verified', ['mobile' => $request['mobile'], 'user_id' => $data['user']->id, 'guard' => 'customer']);
             return $this->successResponse($data ,'You Logged In Successfully.');
         } catch (Exception $e) {
             Log::channel('auth')->error('Check OTP Error', [

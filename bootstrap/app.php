@@ -27,5 +27,59 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*'));
+
+        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'data'    => null,
+                    'message' => $e->getMessage(),
+                    'success' => false,
+                    'errors'  => $e->errors(),
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'data'    => null,
+                    'message' => 'Unauthenticated.',
+                    'success' => false,
+                ], 401);
+            }
+        });
+
+        $exceptions->render(function (\App\Exceptions\TooManyOtpAttemptsException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'data'    => null,
+                    'message' => $e->getMessage(),
+                    'success' => false,
+                    'retry_after' => $e->availableIn,
+                ], 429);
+            }
+        });
+
+        $exceptions->render(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'data'    => null,
+                    'message' => 'Resource not found.',
+                    'success' => false,
+                ], 404);
+            }
+        });
+
+        $exceptions->render(function (\Throwable $e, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'data'    => null,
+                    'message' => app()->environment('production')
+                        ? 'An unexpected error occurred.'
+                        : $e->getMessage(),
+                    'success' => false,
+                ], 500);
+            }
+        });
     })->create();
