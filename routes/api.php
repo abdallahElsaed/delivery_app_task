@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 
 //  =========================== Customer Routes ==========================
 
-Route::prefix('customer')->name('customer.')->group(function () {
+Route::prefix('customer')->name('customer.')->middleware('throttle:5,10')->group(function () {
 
     // Public routes (no auth required)
     Route::post('login',     [CustomerAuthController::class, 'login'])->name('login');
@@ -27,7 +27,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
 
 //  =========================== Drivers Routes ==========================
 
-Route::prefix('driver')->name('driver.')->group(function () {
+Route::prefix('driver')->name('driver.')->middleware('throttle:5,10')->group(function () {
 
     // Public routes (no auth required)
     Route::post('login',     [DriversAuthController::class, 'login'])->name('login');

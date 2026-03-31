@@ -2,8 +2,7 @@
 
 namespace App\Filament\Resources\ImportBatches\Schemas;
 
-use Filament\Forms\Components\DateTimePicker;
-use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\FileUpload;
 use Filament\Schemas\Schema;
 
 class ImportBatchForm
@@ -12,27 +11,13 @@ class ImportBatchForm
     {
         return $schema
             ->components([
-                TextInput::make('filename')
-                    ->required(),
-                TextInput::make('format')
-                    ->required(),
-                TextInput::make('status')
+                FileUpload::make('file')
+                    ->label('Import File')
                     ->required()
-                    ->default('pending'),
-                TextInput::make('total_rows')
-                    ->required()
-                    ->numeric()
-                    ->default(0),
-                TextInput::make('processed_rows')
-                    ->required()
-                    ->numeric()
-                    ->default(0),
-                TextInput::make('failed_rows')
-                    ->required()
-                    ->numeric()
-                    ->default(0),
-                DateTimePicker::make('started_at'),
-                DateTimePicker::make('finished_at'),
+                    ->acceptedFileTypes(['text/csv', 'application/csv', 'text/plain'])
+                    ->disk('local')
+                    ->directory('imports')
+                    ->preserveFilenames(),
             ]);
     }
 }

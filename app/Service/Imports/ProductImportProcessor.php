@@ -10,7 +10,7 @@ class ProductImportProcessor
 {
     public function __construct(private ImporterFactory $factory) {}
 
-    public function handle(string $filePath, int $chunkSize = 51): ImportBatch // 50 for test
+    public function handle(string $filePath, int $chunkSize = 50): ImportBatch // 50 for test
     {
         $extension = strtolower((string) pathinfo($filePath, PATHINFO_EXTENSION));
 

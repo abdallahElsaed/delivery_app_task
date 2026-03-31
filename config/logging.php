@@ -138,9 +138,15 @@ return [
             'level'  => 'info',
         ],
         'import' => [
-            'driver' => 'single',
+            'driver' => 'daily',
             'path'   => storage_path('logs/import.log'),
-            'level'  => 'info',
+            'level'  => 'debug',
+            'days'   => env('LOG_DAILY_DAYS', 14),
+        ],
+        'api' => [
+            'driver' => 'single',
+            'path'   => storage_path('logs/api.log'),
+            'level'  => 'debug',
         ],
     ],
 

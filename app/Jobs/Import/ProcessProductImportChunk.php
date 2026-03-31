@@ -30,49 +30,17 @@ class ProcessProductImportChunk implements ShouldQueue
 
     public function handle(): void
     {
+        $startTime = microtime(true);
+        $startMemory = memory_get_usage(true);
         $batch = ImportBatch::find($this->importBatchId);
 
         $processedCount = 0;
         $failedCount = 0;
         foreach ($this->rows as $index => $row) {
             try {
-                $product = Product::updateOrCreate(
-                    ['sku' => $row['product_sku']],
-                    [
-                        'name'     => $row['product_name'],
-                        'status'   => $row['product_status'],
-                        'currency' => $row['currency'],
-                    ]
-                );
-                $variant = ProductVariant::updateOrCreate(
-                    ['sku' => $row['variant_sku']],
-                    [
-                        'product_id' => $product->id,
-                        'name'       => $row['variant_name'],
-                        'price'      => $row['variant_price'],
-                        'stock'      => $row['variant_stock'],
-                    ]
-                );
-                $attributes = $this->parseAttributes($row['attributes'] ?? '');
-
-                if (!empty($attributes)) {
-                    VariantAttribute::upsert(
-                        array_map(fn($attr) => [
-                            'product_variant_id'      => $variant->id,
-                            'product_id' => $product->id,
-                            'name'   => $attr['attribute_key'],
-                            'value' => $attr['attribute_value'],
-                        ], $attributes),
-                        uniqueBy: ['product_variant_id', 'name'],
-                        update: ['value']
-                    );
-                }
-                ImportBatchRow::where('import_batch_id', $this->importBatchId)
-                    ->where('status', ImportBatchRowStatus::RETRYING)
-                    ->whereJsonContains('raw_data->variant_sku', $row['variant_sku'])
-                    ->update(['status' => ImportBatchRowStatus::RESOLVED]);
-
+                $this->importProduct($row);
                 $processedCount++;
+                // logging Performance
             } catch (\Throwable $e) {
                 $failedCount++;
                 Log::channel('import')->error('Fail Job Row', [
@@ -96,9 +64,48 @@ class ProcessProductImportChunk implements ShouldQueue
 
         $batch->increment('processed_rows', $processedCount);
         $batch->increment('failed_rows', $failedCount);
-        Log::channel('import')->info('batch  finished', [$batch]);
+        Log::channel('import')->info('Job Finished', [$batch]);
+        $this->loggingPerformance($startTime, $startMemory, $processedCount, $failedCount);
     }
 
+    private function importProduct(array $row):void
+    {
+        $product = Product::updateOrCreate(
+            ['sku' => $row['product_sku']],
+            [
+                'name'     => $row['product_name'],
+                'status'   => $row['product_status'],
+                'currency' => $row['currency'],
+            ]
+        );
+        $variant = ProductVariant::updateOrCreate(
+            ['sku' => $row['variant_sku']],
+            [
+                'product_id' => $product->id,
+                'name'       => $row['variant_name'],
+                'price'      => $row['variant_price'],
+                'stock'      => $row['variant_stock'],
+            ]
+        );
+        $attributes = $this->parseAttributes($row['attributes'] ?? '');
+
+        if (!empty($attributes)) {
+            VariantAttribute::upsert(
+                array_map(fn($attr) => [
+                    'product_variant_id'      => $variant->id,
+                    'product_id' => $product->id,
+                    'name'   => $attr['attribute_key'],
+                    'value' => $attr['attribute_value'],
+                ], $attributes),
+                uniqueBy: ['product_variant_id', 'name'],
+                update: ['value']
+            );
+        }
+        ImportBatchRow::where('import_batch_id', $this->importBatchId)
+            ->where('status', ImportBatchRowStatus::RETRYING)
+            ->whereJsonContains('raw_data->variant_sku', $row['variant_sku'])
+            ->update(['status' => ImportBatchRowStatus::RESOLVED]);
+    }
     private function parseAttributes(string $attributes): array
     {
         if (empty(trim($attributes))) {
@@ -119,5 +126,24 @@ class ProcessProductImportChunk implements ShouldQueue
         }
 
         return $result;
+    }
+
+    private function loggingPerformance(float $startTime,int $startMemory,int $processedCount,int $failedCount): void
+    {
+        $endTime = microtime(true);
+        $endMemory = memory_get_usage(true);
+
+        $duration   = round(($endTime - $startTime) * 1000, 2); // in milliseconds
+        $memoryUsed = round(($endMemory - $startMemory) / 1024 / 1024, 2); // in MB
+        $rowsPerSec = $processedCount > 0 ? round($processedCount / (($endTime - $startTime)), 2) : 0;
+
+        Log::channel('import')->info('Chunk performance', [
+            'batch_id'    => $this->importBatchId,
+            'processed'   => $processedCount,
+            'failed'      => $failedCount,
+            'duration_ms' => $duration,
+            'memory_mb'   => $memoryUsed,
+            'rows_per_sec' => $rowsPerSec,
+        ]);
     }
 }

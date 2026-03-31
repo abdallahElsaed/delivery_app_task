@@ -11,7 +11,6 @@ use App\Http\Requests\Auth\LoginOtpRequest;
 use App\Models\Driver;
 use Exception;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class DriversAuthController extends Controller
@@ -49,35 +48,6 @@ class DriversAuthController extends Controller
             return $this->errorResponse(
                 $e->getMessage(),
             );
-        }
-    }
-
-    public function logout()
-    {
-        try {
-            /** @var \App\Models\Driver|null $driver */
-            $driver = request()->user('driver');
-
-            if (!$driver) {
-                return $this->errorResponse('Unauthenticated.', false, 401);
-            }
-
-            $token = $driver->currentAccessToken();
-            if ($token) {
-                $driver->tokens()->whereKey($token->id)->delete();
-            } else {
-                // If the request isn't authenticated via a Sanctum token,
-                // fall back to revoking all tokens for safety.
-                $driver->tokens()->delete();
-            }
-
-            return $this->successResponse([], 'Logged out successfully.');
-        } catch (Exception $e) {
-            Log::channel('auth')->error('Driver Logout Error', [
-                'message' => $e->getMessage(),
-            ]);
-
-            return $this->errorResponse($e->getMessage());
         }
     }
 }

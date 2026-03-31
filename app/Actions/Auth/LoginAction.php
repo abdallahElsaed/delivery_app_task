@@ -33,7 +33,6 @@ class LoginAction
 
         // 5. Ensure + prefix
         $mobile = str_starts_with($mobile, '+') ? $mobile : "+{$mobile}";
-
         // 6. Dispatch notification jobs (SMS, WhatsApp)
         SmsNotificationJop::dispatch($mobile, $otp);
         WhatsAppNotificationJop::dispatch($mobile, $otp);
