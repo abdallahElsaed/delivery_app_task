@@ -137,6 +137,11 @@ return [
             'path'   => storage_path('logs/auth.log'),
             'level'  => 'info',
         ],
+        'import' => [
+            'driver' => 'single',
+            'path'   => storage_path('logs/import.log'),
+            'level'  => 'info',
+        ],
     ],
 
 ];

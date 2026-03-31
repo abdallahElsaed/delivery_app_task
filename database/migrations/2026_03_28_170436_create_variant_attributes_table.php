@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('variant_attributes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('product_variant_id')->constrained('product_variants');
+            $table->foreignId('product_id')->constrained('products');
             $table->string('name');
             $table->string('value');
             $table->index(['product_variant_id', 'name', 'value']);
@@ -29,3 +30,4 @@ return new class extends Migration
         Schema::dropIfExists('variant_attributes');
     }
 };
+
