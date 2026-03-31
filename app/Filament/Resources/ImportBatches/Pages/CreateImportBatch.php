@@ -13,8 +13,7 @@ class CreateImportBatch extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        $filePath = storage_path('app/' . $data['file']);
-
+        $filePath = storage_path('app/private/' . $data['file']);
         /** @var ProductImportProcessor $processor */
         $processor = app(ProductImportProcessor::class);
 

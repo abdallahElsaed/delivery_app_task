@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ImportBatches\Schemas;
 
+use App\Models\ImportBatch;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 
@@ -21,6 +22,16 @@ class ImportBatchInfolist
                         'processing' => 'warning',
                         'pending' => 'gray',
                         default => 'gray',
+                    }),
+                TextEntry::make('progress')
+                    ->label('Progress')
+                    ->state(function (ImportBatch $record): string {
+                        if ($record->total_rows === 0) {
+                            return '0%';
+                        }
+                        $processed = $record->processed_rows + $record->failed_rows;
+                        $percent = round(($processed / $record->total_rows) * 100);
+                        return "{$percent}% ({$processed}/{$record->total_rows})";
                     }),
                 TextEntry::make('total_rows')
                     ->numeric(),

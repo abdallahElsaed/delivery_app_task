@@ -16,7 +16,6 @@ class CsvImportStrategy implements ImporterInterface
             SplFileObject::SKIP_EMPTY |
             SplFileObject::DROP_NEW_LINE
         );
-
         $header = $this->getHeader($file);
         if (empty($header) || !is_array($header)) {
             throw new InvalidArgumentException("Invalid or empty CSV file: {$filePath}");
@@ -39,3 +38,7 @@ class CsvImportStrategy implements ImporterInterface
     }
 
 }
+
+// /Users/abdallahelsaed/Herd/delivery_app_task/storage/app/imports/products_test_v2.csv
+
+// /Users/abdallahelsaed/Herd/delivery_app_task/storage/app/private/imports/products_test_v2.csv

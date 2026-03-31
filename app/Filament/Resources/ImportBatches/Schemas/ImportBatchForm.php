@@ -14,7 +14,7 @@ class ImportBatchForm
                 FileUpload::make('file')
                     ->label('Import File')
                     ->required()
-                    ->acceptedFileTypes(['text/csv', 'application/csv', 'text/plain'])
+                    ->acceptedFileTypes(['text/csv', 'application/csv', 'text/plain', 'application/json'])
                     ->disk('local')
                     ->directory('imports')
                     ->preserveFilenames(),

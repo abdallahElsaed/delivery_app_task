@@ -4,6 +4,7 @@ namespace App\Service\Imports;
 
 use App\Contracts\Imports\ImporterInterface;
 use App\Service\Imports\Strategies\CsvImportStrategy;
+use App\Service\Imports\Strategies\JsonImportStrategy;
 use InvalidArgumentException;
 
 class ImporterFactory
@@ -16,7 +17,8 @@ class ImporterFactory
      * @var array<string, class-string<ImporterInterface>>
      */
     private const STRATEGY_MAP = [
-        'csv' => CsvImportStrategy::class,
+        'csv'  => CsvImportStrategy::class,
+        'json' => JsonImportStrategy::class,
     ];
 
     public function make(string $extension): ImporterInterface
