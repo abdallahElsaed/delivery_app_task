@@ -238,6 +238,12 @@ php artisan import:products products_test_100k.csv
 php artisan import:products products_test.json
 ```
 
+#### Postman collection
+
+A Postman collection is included in the repo root:
+
+- `Delivery App.postman_collection.json`
+
 #### Import benchmark (100,000 rows)
 
 - **Total time**: ~31m 52s
