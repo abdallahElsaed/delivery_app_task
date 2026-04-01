@@ -14,12 +14,7 @@ class ViewImportBatch extends ViewRecord
 {
     protected static string $resource = ImportBatchResource::class;
 
-    public function getPollingInterval(): ?string
-    {
-        $status = $this->getRecord()->status;
-
-        return in_array($status, ['pending', 'processing']) ? '3s' : null;
-    }
+    protected string $view = 'filament.resources.import-batches.pages.view-import-batch';
 
     protected function getHeaderActions(): array
     {

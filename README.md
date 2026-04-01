@@ -226,6 +226,23 @@ php artisan import:products /path/to/products.csv
 php artisan import:retry {batchId}
 ```
 
+#### Try it locally (included sample files)
+
+This repo includes sample import files you can use right away:
+
+```bash
+# 100k rows CSV
+php artisan import:products products_test_100k.csv
+
+# JSON sample
+php artisan import:products products_test.json
+```
+
+#### Import benchmark (100,000 rows)
+
+- **Total time**: ~31m 52s (from `13:22:10.711282` to `13:54:02.692744` UTC)
+- **Peak reported chunk memory**: 2.0 MB (from `Chunk performance` entries)
+
 #### CSV Format
 
 | Column           | Description                                              |
