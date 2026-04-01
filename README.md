@@ -240,7 +240,7 @@ php artisan import:products products_test.json
 
 #### Import benchmark (100,000 rows)
 
-- **Total time**: ~31m 52s (from `13:22:10.711282` to `13:54:02.692744` UTC)
+- **Total time**: ~31m 52s
 - **Peak reported chunk memory**: 2.0 MB (from `Chunk performance` entries)
 
 #### CSV Format
