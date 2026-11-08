@@ -972,19 +972,6 @@
           ]
         }
       ]
-    },
-    {
-      "name": "Import",
-      "item": [
-        {
-          "name": "test-import",
-          "request": {
-            "method": "GET",
-            "header": []
-          },
-          "response": []
-        }
-      ]
     }
   ],
   "event": [

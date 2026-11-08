@@ -49,9 +49,9 @@ class ImportBatchResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => ListImportBatches::route('/'),
+            'index' => ListImportBatches::route('/'),
             'create' => CreateImportBatch::route('/create'),
-            'view'   => ViewImportBatch::route('/{record}'),
+            'view' => ViewImportBatch::route('/{record}'),
         ];
     }
 }

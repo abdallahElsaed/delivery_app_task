@@ -23,6 +23,10 @@ class ImportBatchInfolist
                         'pending' => 'gray',
                         default => 'gray',
                     }),
+                TextEntry::make('error_message')
+                    ->label('Failure reason')
+                    ->color('danger')
+                    ->visible(fn (ImportBatch $record): bool => filled($record->error_message)),
                 TextEntry::make('progress')
                     ->label('Progress')
                     ->state(function (ImportBatch $record): string {
@@ -31,6 +35,7 @@ class ImportBatchInfolist
                         }
                         $processed = $record->processed_rows + $record->failed_rows;
                         $percent = round(($processed / $record->total_rows) * 100);
+
                         return "{$percent}% ({$processed}/{$record->total_rows})";
                     }),
                 TextEntry::make('total_rows')

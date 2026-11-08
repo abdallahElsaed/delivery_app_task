@@ -1,0 +1,4 @@
+[
+    {"product_sku": "TSHIRT-001", "product_name": "T-Shirt", "product_status": "active", "currency": "USD", "variant_sku": "TSHIRT-001-RED-M", "variant_name": "Red M", "variant_price": "19.99", "variant_stock": "10", "attributes": ""},
+    {"product_sku": "MUG-001", "product_name": "Mug", "product_status": "active", "currency": "EUR", "variant_name": "White", "variant_price": "7.50", "variant_stock": "3", "attributes": ""}
+]

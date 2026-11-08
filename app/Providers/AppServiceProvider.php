@@ -7,7 +7,6 @@ use App\Services\Notification\SmsChannel;
 use Illuminate\Support\ServiceProvider;
 use Twilio\Rest\Client;
 
-
 class AppServiceProvider extends ServiceProvider
 {
     /**

@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\Customer;
+use App\Models\Driver;
+use App\Models\User;
+
 return [
 
     /*
@@ -41,11 +45,11 @@ return [
             'provider' => 'users',
         ],
         'customer' => [
-            'driver'   => 'sanctum',
+            'driver' => 'sanctum',
             'provider' => 'customers',
         ],
         'driver' => [
-            'driver'   => 'sanctum',
+            'driver' => 'sanctum',
             'provider' => 'drivers',
         ],
     ],
@@ -70,15 +74,15 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\User::class),
+            'model' => env('AUTH_MODEL', User::class),
         ],
         'customers' => [
             'driver' => 'eloquent',
-            'model'  => App\Models\Customer::class,
+            'model' => Customer::class,
         ],
         'drivers' => [
             'driver' => 'eloquent',
-            'model'  => App\Models\Driver::class,
+            'model' => Driver::class,
         ],
         // 'users' => [
         //     'driver' => 'database',

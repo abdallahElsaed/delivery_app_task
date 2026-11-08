@@ -27,7 +27,7 @@ class LoginOtpRequest extends FormRequest
                 'required',
                 // 'regex:/^05\d{8}$/' // todo: remove the comment
             ],
-            'otp' => ['required', 'integer']
+            'otp' => ['required', 'integer'],
         ];
     }
 }

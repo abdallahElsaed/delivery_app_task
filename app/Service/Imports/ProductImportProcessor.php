@@ -2,75 +2,44 @@
 
 namespace App\Service\Imports;
 
-use App\Jobs\Import\ProcessProductImportChunk;
+use App\Jobs\Import\ReadProductImportFile;
 use App\Models\ImportBatch;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 
 class ProductImportProcessor
 {
-    public function __construct(private ImporterFactory $factory) {}
-
-    public function handle(string $filePath, int $chunkSize = 500): ImportBatch 
+    /**
+     * Create a pending import batch and queue the job that reads the file.
+     * Parsing happens in the background; the returned batch is refreshed so
+     * callers see its state after any synchronous processing.
+     */
+    public function handle(string $filePath): ImportBatch
     {
-        $extension = strtolower((string) pathinfo($filePath, PATHINFO_EXTENSION));
-
         $batch = ImportBatch::create([
             'filename' => basename($filePath),
-            'format'   => $extension,
+            'format' => strtolower((string) pathinfo($filePath, PATHINFO_EXTENSION)),
         ]);
-        $batch->markAsProcessing();
 
-        Log::channel('import')->info('Import batch started', [
+        Log::channel('import')->info('Import batch queued', [
             'batch_id' => $batch->id,
             'filename' => $batch->filename,
-            'format'   => $extension,
+            'format' => $batch->format,
         ]);
 
-        $strategy = $this->factory->make($extension);
+        $batchId = $batch->id;
 
-        $busBatch = Bus::batch([])
-            ->then(function () use ($batch) {
-                $batch->refresh();
-                $batch->markAsCompleted();
-                Log::channel('import')->info('Import batch completed', [
-                    'batch_id'       => $batch->id,
-                    'total_rows'     => $batch->total_rows,
-                    'processed_rows' => $batch->processed_rows,
-                    'failed_rows'    => $batch->failed_rows,
-                ]);
-            })
-            ->catch(function () use ($batch) {
-                $batch->refresh();
-                $batch->markAsFailed();
-                Log::channel('import')->error('Import batch failed', [
-                    'batch_id'    => $batch->id,
-                    'failed_rows' => $batch->failed_rows,
-                ]);
+        Bus::batch([new ReadProductImportFile($batchId, $filePath)])
+            ->allowFailures()
+            ->finally(function () use ($batchId) {
+                // A file-level failure has already marked the batch failed; a
+                // crashed last chunk completes it from its failed() hook.
+                ImportBatch::find($batchId)?->completeIfFinished();
             })
             ->name("Import: {$batch->filename}")
             ->onQueue('imports')
             ->dispatch();
 
-        $currentChunk = [];
-        $totalRows = 0;
-
-        foreach ($strategy->parse($filePath) as $row) {
-            $currentChunk[] = $row;
-            $totalRows++;
-
-            if (count($currentChunk) === $chunkSize) {
-                $busBatch->add(new ProcessProductImportChunk($batch->id, $currentChunk));
-                $currentChunk = [];
-            }
-        }
-
-        if (!empty($currentChunk)) {
-            $busBatch->add(new ProcessProductImportChunk($batch->id, $currentChunk));
-        }
-
-        $batch->update(['total_rows' => $totalRows]);
-
-        return $batch;
+        return $batch->refresh();
     }
 }

@@ -6,6 +6,7 @@ use App\Filament\Resources\ImportBatches\ImportBatchResource;
 use App\Service\Imports\ProductImportProcessor;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class CreateImportBatch extends CreateRecord
 {
@@ -13,7 +14,7 @@ class CreateImportBatch extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        $filePath = storage_path('app/private/' . $data['file']);
+        $filePath = Storage::disk('local')->path($data['file']);
         /** @var ProductImportProcessor $processor */
         $processor = app(ProductImportProcessor::class);
 

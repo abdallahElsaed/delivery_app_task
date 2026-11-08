@@ -68,6 +68,9 @@ REDIS_PASSWORD=null
 QUEUE_CONNECTION=redis
 CACHE_STORE=redis
 
+# Rows per import chunk job (default 500)
+IMPORT_CHUNK_SIZE=500
+
 # Twilio
 TWILIO_SID=your_twilio_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
@@ -87,11 +90,31 @@ composer setup
 
 ## Running the Application
 
-Starts the server, queue worker, log viewer (Pail), and Vite dev server in parallel:
+Starts the server, a queue worker for the `imports`, `notification` and `default` queues, the log viewer (Pail), and the Vite dev server in parallel:
 
 ```bash
 composer dev
 ```
+
+---
+
+## Testing
+
+```bash
+composer test
+```
+
+Tests run on SQLite in-memory with the `sync` queue (see `phpunit.xml`). Any PHP deprecation fails the run.
+
+---
+
+## Code Quality
+
+```bash
+composer check
+```
+
+Runs Pint (formatting), Larastan level 5 (static analysis) and the test suite. `phpstan-baseline.neon` lists errors in code that predates Larastan. GitHub Actions runs `composer check` on every push and pull request.
 
 ---
 
@@ -187,44 +210,52 @@ Product (name, sku, status, currency)
 
 ### CSV Import System
 
-A **Strategy Pattern**-based import system designed for large-scale product ingestion.
+A **Strategy Pattern**-based import system for large product catalogues, in CSV or JSON.
 
 #### Architecture
 
 ```
-Artisan Command
-    │
-    ▼
-ProductImportProcessor (orchestrator)
-    │
-    ├── ImporterFactory ──> selects strategy by file extension
-    │       │
-    │       ├── CsvImportStrategy
-    │       └── (future: XlsxImportStrategy, etc.)
-    │
-    ├── Creates ImportBatch record
-    ├── Parses file via strategy (streaming, memory-efficient)
-    ├── Chunks rows (50 per chunk)
-    └── Dispatches ProcessProductImportChunk jobs
+import:products command        Admin upload (/admin)
+(copies the file)              (stores the file)
+        │                              │
+        └──────────────┬───────────────┘
+                       ▼
+     storage/app/private/imports/<ulid>/<file name>
+                       │
+                       ▼
+ProductImportProcessor ── creates ImportBatch (pending)
+                       │
+                       ▼
+ReadProductImportFile job (queue "imports")
+    ├── ImporterFactory ──> CsvImportStrategy / JsonImportStrategy
+    ├── File-level error (format, headers, empty file) ──> batch failed + error_message
+    ├── Records malformed rows and in-file conflicts as failed rows
+    ├── Sets total_rows and marks the batch processing
+    └── Adds ProcessProductImportChunk jobs (IMPORT_CHUNK_SIZE rows each) to the same job batch
             │
             ▼
-        Redis Queue: "imports"
+        ProcessProductImportChunk (queue "imports")
+        ├── Validates each row (ProductImportRowValidator)
+        ├── Saves product, variant and attributes in one transaction per row
+        └── Records failed rows with line number, reason and retryable flag
             │
             ▼
-        Processes each chunk
-        ├── Success: increments batch counter
-        └── Failure: creates ImportBatchRow with error details
+        Batch becomes completed once every chunk has finished
 ```
+
+Nothing is parsed in the command or the HTTP request: both only store the file and queue the reading job.
 
 #### Import Commands
 
 ```bash
-# Import products from a CSV file
+# Import products from a CSV or JSON file
 php artisan import:products /path/to/products.csv
 
-# Retry failed rows from a previous import
+# Retry the retryable failed rows of a finished import
 php artisan import:retry {batchId}
 ```
+
+The admin upload accepts `.csv` and `.json` files up to 50 MB.
 
 #### Try it locally (included sample files)
 
@@ -246,27 +277,51 @@ A Postman collection is included in the repo root:
 
 #### Import benchmark (100,000 rows)
 
-- **Total time**: ~31m 52s
-- **Peak reported chunk memory**: 2.0 MB (from `Chunk performance` entries)
+Importing `products_test_100k.csv` on local MySQL, 500-row chunks unless noted:
+
+| Run | Workers | Time | Rows/sec |
+|-----|---------|------|----------|
+| Before the import hardening: first import | 1 | ~29.5 min | ~56 |
+| Before the import hardening: re-import (2000-row chunks) | 1 | ~62 min | ~27 |
+| After: re-import | 1 (`sync` queue) | 91 s | ~1,100 |
+| After: re-import with changed attributes | 4 Redis workers | 60 s | ~1,670 |
+
+On the same single worker, a re-import went from ~62 min to 91 s. A first import into an empty database was not re-measured after the change.
 
 #### CSV Format
 
-| Column           | Description                                              |
-|------------------|----------------------------------------------------------|
-| `product_sku`    | Unique product identifier                                |
-| `product_name`   | Product display name                                     |
-| `product_status` | Product status                                           |
-| `currency`       | Price currency code                                      |
-| `variant_sku`    | Unique variant identifier                                |
-| `variant_name`   | Variant display name                                     |
-| `variant_price`  | Variant price                                            |
-| `variant_stock`  | Available stock quantity                                 |
-| `attributes`     | Pipe-separated key:value pairs (e.g., `Color:Red\|Size:M`) |
+The header row is matched ignoring case, surrounding spaces, column order and a byte-order mark. JSON files are a list of objects with the same keys.
+
+| Column           | Rule                                                        |
+|------------------|-------------------------------------------------------------|
+| `product_sku`    | Required, up to 255 characters; repeated on each row of the same product |
+| `product_name`   | Required, up to 255 characters                              |
+| `product_status` | `active`, `inactive` or `draft`                             |
+| `currency`       | 3 uppercase letters (e.g. `USD`)                            |
+| `variant_sku`    | Required, up to 255 characters; one row per variant          |
+| `variant_name`   | Required, up to 255 characters                              |
+| `variant_price`  | 0 to 99,999,999.99, at most 2 decimal places                |
+| `variant_stock`  | Whole number from 0 to 2,147,483,647                        |
+| `attributes`     | Optional `key:value` pairs separated by `\|` (e.g., `Color:Red\|Size:M`) |
+
+#### Import Rules
+
+- A row that breaks a rule fails with every reason listed, and nothing from it is saved.
+- Each row is saved in one transaction: product, variant and attributes together or not at all.
+- Importing the same file twice gives the same catalogue as importing it once. Product and variant SKUs are unique across the catalogue.
+- A variant's attributes are **replaced** by the row's attributes; an empty `attributes` cell removes them all. Attribute keys can't repeat within a row (compared ignoring case).
+- A variant never moves between products: a row whose `variant_sku` belongs to another product fails.
+- Within one file the first row wins: a later row repeating a `variant_sku`, or giving different name, status or currency for the same product, fails and can't be retried.
+- Across separate imports the latest file wins. Products and variants missing from a file are left untouched.
 
 #### Tracking Models
 
-- **ImportBatch** -- Tracks overall import progress (status, total/processed/failed counts, timestamps)
-- **ImportBatchRow** -- Records individual row failures (row number, raw data, error message)
+- **ImportBatch** -- Tracks an import: status (`pending` → `processing` → `completed`, or `failed` for a file-level error with its `error_message`), total/processed/failed counts and timestamps
+- **ImportBatchRow** -- Records a failed row: its line in the file, raw data, reason, status (`failed`, `retrying`, `resolved`) and whether it can be retried
+
+#### Retry
+
+`import:retry` and the admin **Retry** button share the same rules: they are refused while the batch is `pending` or `processing`, retry only rows marked retryable, process them in chunks, and move each row to `resolved` or back to `failed` with its new reason. The batch returns to the status it had before the retry.
 
 ---
 
@@ -293,6 +348,12 @@ Both jobs are queued via Redis and processed asynchronously. The Twilio client i
 | `notification` | SMS & WhatsApp message delivery  |
 | `default`      | General-purpose jobs             |
 
+A worker must name the queues it serves, or it only works `default`:
+
+```bash
+php artisan queue:work redis --queue=imports,notification,default
+```
+
 ---
 
 ### Admin Panel
@@ -302,7 +363,7 @@ Built with **Filament v5**.
 - **URL:** `/admin`
 - **Auth:** Standard User model with session-based authentication
 - **Theme:** Amber primary color
-- **Resources:** ImportBatch (read-only monitoring of import jobs)
+- **Resources:** ImportBatch (upload import files, monitor progress and failed rows, retry failed rows)
 
 Resources are auto-discovered from `app/Filament/Resources/`.
 

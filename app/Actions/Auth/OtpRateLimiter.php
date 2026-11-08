@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\RateLimiter;
 class OtpRateLimiter
 {
     private const MAX_ATTEMPTS = 3;
+
     private const DECAY_MINUTES = 5;
 
     public function attempt(string $mobile): void

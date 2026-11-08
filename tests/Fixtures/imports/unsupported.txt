@@ -1,0 +1,2 @@
+product_sku,variant_sku
+TSHIRT-001,TSHIRT-001-RED-M

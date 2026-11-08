@@ -1,10 +1,14 @@
 <?php
 
+use App\Exceptions\TooManyOtpAttemptsException;
 use App\Http\Middleware\LogApiRequests;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,13 +18,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function (): void {
             Route::middleware('web')
-            ->prefix('admin')
-            ->group(base_path('routes/admin.php'));
+                ->prefix('admin')
+                ->group(base_path('routes/admin.php'));
         }
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(replace: [
-            ''=> '',
+            '' => '',
         ]);
         $middleware->api(append: [
             LogApiRequests::class,
@@ -29,31 +33,31 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*'));
 
-        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, $request) {
+        $exceptions->render(function (ValidationException $e, $request) {
             if ($request->is('api/*')) {
                 return response()->json([
-                    'data'    => null,
+                    'data' => null,
                     'message' => $e->getMessage(),
                     'success' => false,
-                    'errors'  => $e->errors(),
+                    'errors' => $e->errors(),
                 ], 422);
             }
         });
 
-        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+        $exceptions->render(function (AuthenticationException $e, $request) {
             if ($request->is('api/*')) {
                 return response()->json([
-                    'data'    => null,
+                    'data' => null,
                     'message' => 'Unauthenticated.',
                     'success' => false,
                 ], 401);
             }
         });
 
-        $exceptions->render(function (\App\Exceptions\TooManyOtpAttemptsException $e, $request) {
+        $exceptions->render(function (TooManyOtpAttemptsException $e, $request) {
             if ($request->is('api/*')) {
                 return response()->json([
-                    'data'    => null,
+                    'data' => null,
                     'message' => $e->getMessage(),
                     'success' => false,
                     'retry_after' => $e->availableIn,
@@ -61,20 +65,20 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, $request) {
+        $exceptions->render(function (ModelNotFoundException $e, $request) {
             if ($request->is('api/*')) {
                 return response()->json([
-                    'data'    => null,
+                    'data' => null,
                     'message' => 'Resource not found.',
                     'success' => false,
                 ], 404);
             }
         });
 
-        $exceptions->render(function (\Throwable $e, $request) {
+        $exceptions->render(function (Throwable $e, $request) {
             if ($request->is('api/*')) {
                 return response()->json([
-                    'data'    => null,
+                    'data' => null,
                     'message' => app()->environment('production')
                         ? 'An unexpected error occurred.'
                         : $e->getMessage(),

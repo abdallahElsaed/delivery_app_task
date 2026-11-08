@@ -2,10 +2,9 @@
 
 namespace App\Enums\Import;
 
-enum ImportBatchRowStatus : string
+enum ImportBatchRowStatus: string
 {
-    case FAILED   = 'failed';
+    case FAILED = 'failed';
     case RETRYING = 'retrying';
     case RESOLVED = 'resolved';
 }
-
