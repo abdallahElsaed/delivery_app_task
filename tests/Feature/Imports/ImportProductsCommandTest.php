@@ -8,6 +8,7 @@ use App\Models\ProductVariant;
 use App\Models\VariantAttribute;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Monolog\Handler\NullHandler;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -26,6 +27,9 @@ class ImportProductsCommandTest extends TestCase
 
         // Keep test runs out of the real storage/logs/import.log.
         config(['logging.channels.import' => ['driver' => 'monolog', 'handler' => NullHandler::class]]);
+
+        // The command copies every file it imports onto the local disk.
+        Storage::fake('local');
     }
 
     private function import(string $fixture): ImportBatch
@@ -132,6 +136,27 @@ class ImportProductsCommandTest extends TestCase
 
         $this->assertSame([], $this->attributesOf('TSHIRT-001-RED-M'));
         $this->assertSame(['color' => 'blue', 'size' => 'L'], $this->attributesOf('TSHIRT-001-BLU-L'));
+    }
+
+    public function test_imported_file_is_kept_as_a_copy_in_the_imports_directory(): void
+    {
+        $fixture = base_path('tests/Fixtures/imports/products_without_attributes.csv');
+
+        $batch = $this->import('products_without_attributes.csv');
+
+        $copies = Storage::disk('local')->allFiles('imports');
+        $this->assertCount(1, $copies);
+        $this->assertMatchesRegularExpression('#^imports/[^/]+/products_without_attributes\.csv$#', $copies[0]);
+        $this->assertSame(file_get_contents($fixture), Storage::disk('local')->get($copies[0]));
+        $this->assertSame('products_without_attributes.csv', $batch->filename);
+    }
+
+    public function test_same_file_imported_twice_is_kept_as_two_copies(): void
+    {
+        $this->import('products_without_attributes.csv');
+        $this->import('products_without_attributes.csv');
+
+        $this->assertCount(2, Storage::disk('local')->allFiles('imports'));
     }
 
     public function test_missing_file_is_rejected_without_creating_a_batch(): void

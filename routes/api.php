@@ -39,11 +39,3 @@ Route::prefix('driver')->name('driver.')->middleware('throttle:5,10')->group(fun
     });
 
 });
-
-//  =========================== Test Imports Route ==========================
-
-Route::get('/test-import', function () {
-    $processor = app(\App\Service\Imports\ProductImportProcessor::class);
-    $processor->handle('/Users/abdallahelsaed/Herd/delivery_app_task/products_test.csv');
-    return 'Import dispatched';
-});

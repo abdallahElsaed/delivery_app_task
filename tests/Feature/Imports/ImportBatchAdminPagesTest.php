@@ -26,8 +26,6 @@ class ImportBatchAdminPagesTest extends TestCase
 {
     use RefreshDatabase;
 
-    private string $uploadName;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -37,22 +35,14 @@ class ImportBatchAdminPagesTest extends TestCase
 
         $this->actingAs(User::factory()->create());
 
-        // The create page reads uploads from the real local disk, so use a
-        // unique name and remove it afterwards.
-        $this->uploadName = 'phase0-test-'.uniqid().'.csv';
-    }
-
-    protected function tearDown(): void
-    {
-        Storage::disk('local')->delete("imports/{$this->uploadName}");
-
-        parent::tearDown();
+        // Keep uploads out of the real storage/app/private/imports.
+        Storage::fake('local');
     }
 
     public function test_uploading_a_file_creates_a_batch_and_redirects_to_it(): void
     {
         $file = UploadedFile::fake()->createWithContent(
-            $this->uploadName,
+            'products.csv',
             file_get_contents(base_path('tests/Fixtures/imports/products_without_attributes.csv')),
         );
 
@@ -63,8 +53,51 @@ class ImportBatchAdminPagesTest extends TestCase
 
         $batch = ImportBatch::sole();
         $component->assertRedirect(ImportBatchResource::getUrl('view', ['record' => $batch]));
-        $this->assertSame($this->uploadName, $batch->filename);
+        $this->assertSame('products.csv', $batch->filename);
         $this->assertSame(2, $batch->total_rows);
+    }
+
+    public function test_two_uploads_with_the_same_name_keep_their_own_files(): void
+    {
+        foreach (['products_without_attributes.csv', 'products_with_attributes.csv'] as $fixture) {
+            Livewire::test(CreateImportBatch::class)
+                ->fillForm(['file' => UploadedFile::fake()->createWithContent(
+                    'products.csv',
+                    file_get_contents(base_path("tests/Fixtures/imports/{$fixture}")),
+                )])
+                ->call('create')
+                ->assertHasNoFormErrors();
+        }
+
+        $this->assertCount(2, Storage::disk('local')->allFiles('imports'));
+        $this->assertSame(['products.csv', 'products.csv'], ImportBatch::orderBy('id')->pluck('filename')->all());
+    }
+
+    public static function rejectedUploads(): array
+    {
+        return [
+            'not csv or json' => [fn () => UploadedFile::fake()->createWithContent(
+                'products.txt',
+                file_get_contents(base_path('tests/Fixtures/imports/products_without_attributes.csv')),
+            ), 'The import File field must have one of the following extensions: csv, json.'],
+            'over 50 MB' => [
+                fn () => UploadedFile::fake()->create('products.csv', 51201, 'text/csv'),
+                'The import File field must not be greater than 51200 kilobytes.',
+            ],
+        ];
+    }
+
+    #[DataProvider('rejectedUploads')]
+    public function test_upload_that_breaks_a_limit_is_rejected_without_creating_a_batch(\Closure $makeFile, string $reason): void
+    {
+        $component = Livewire::test(CreateImportBatch::class)
+            ->fillForm(['file' => $makeFile()])
+            ->call('create')
+            ->assertHasFormErrors(['file']);
+
+        $this->assertSame([$reason], $component->errors()->get('data.file'));
+
+        $this->assertSame(0, ImportBatch::count());
     }
 
     public function test_failed_batch_page_shows_why_it_failed(): void
