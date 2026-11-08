@@ -5,6 +5,7 @@ namespace Tests\Feature\Imports;
 use App\Enums\Import\ImportBatchRowStatus;
 use App\Jobs\Import\ProcessProductImportChunk;
 use App\Models\ImportBatch;
+use App\Models\ImportBatchRow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Monolog\Handler\NullHandler;
 use RuntimeException;
@@ -77,5 +78,31 @@ class ProcessProductImportChunkFailureTest extends TestCase
         $batch->refresh();
         $this->assertSame('completed', $batch->status);
         $this->assertNotNull($batch->finished_at);
+    }
+
+    public function test_retried_chunk_that_exhausts_its_attempts_fails_its_existing_records_again(): void
+    {
+        $batch = ImportBatch::create([
+            'filename' => 'products.csv',
+            'format' => 'csv',
+            'status' => 'processing',
+            'total_rows' => 2,
+            'processed_rows' => 1,
+        ]);
+        $row = ['product_sku' => 'MUG-001', 'variant_sku' => 'MUG-001-WHITE'];
+        $record = ImportBatchRow::recordFailure($batch->id, 5, $row, 'Original failure');
+        $record->update(['status' => ImportBatchRowStatus::RETRYING]);
+
+        (new ProcessProductImportChunk($batch->id, [$record->id => $row], [$record->id => $record->id]))
+            ->failed(new RuntimeException('Connection refused'));
+
+        $record = $batch->rows()->sole();
+        $this->assertSame(ImportBatchRowStatus::FAILED->value, $record->status);
+        $this->assertSame('Processing error: Connection refused', $record->error_message);
+        $this->assertTrue($record->retryable);
+
+        $batch->refresh();
+        $this->assertSame(1, $batch->failed_rows);
+        $this->assertSame('completed', $batch->status);
     }
 }

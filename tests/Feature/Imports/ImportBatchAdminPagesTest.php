@@ -2,16 +2,19 @@
 
 namespace Tests\Feature\Imports;
 
+use App\Enums\Import\ImportBatchRowStatus;
 use App\Filament\Resources\ImportBatches\ImportBatchResource;
 use App\Filament\Resources\ImportBatches\Pages\CreateImportBatch;
 use App\Filament\Resources\ImportBatches\Pages\ViewImportBatch;
 use App\Models\ImportBatch;
+use App\Models\ImportBatchRow;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Monolog\Handler\NullHandler;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -77,29 +80,66 @@ class ImportBatchAdminPagesTest extends TestCase
             ->assertSee("File format 'txt' is not supported.");
     }
 
-    public function test_retry_action_is_hidden_when_nothing_failed(): void
+    public function test_retry_action_is_hidden_when_no_failed_row_can_be_retried(): void
     {
-        $batch = ImportBatch::create(['filename' => 'products.csv', 'format' => 'csv', 'status' => 'completed']);
+        $batch = $this->batchWithFailedRow(status: 'completed', retryable: false);
 
         Livewire::test(ViewImportBatch::class, ['record' => $batch->getRouteKey()])
             ->assertActionHidden('retryFailedRows');
     }
 
-    /**
-     * Current behaviour: the retry button shows as soon as failed_rows > 0,
-     * even while the import is still running. Phase 3 hides it until the
-     * batch is completed or failed.
-     */
-    public function test_retry_action_is_currently_visible_while_the_batch_is_processing(): void
+    #[DataProvider('runningStatuses')]
+    public function test_retry_action_is_hidden_while_the_batch_is_running(string $status): void
+    {
+        $batch = $this->batchWithFailedRow(status: $status);
+
+        Livewire::test(ViewImportBatch::class, ['record' => $batch->getRouteKey()])
+            ->assertActionHidden('retryFailedRows');
+    }
+
+    public static function runningStatuses(): array
+    {
+        return [
+            'pending' => ['pending'],
+            'processing' => ['processing'],
+        ];
+    }
+
+    public function test_retry_action_retries_the_failed_rows_of_a_finished_batch(): void
+    {
+        $batch = $this->batchWithFailedRow(status: 'completed');
+
+        Livewire::test(ViewImportBatch::class, ['record' => $batch->getRouteKey()])
+            ->assertActionVisible('retryFailedRows')
+            ->callAction('retryFailedRows')
+            ->assertNotified('Retrying 1 failed rows.');
+
+        $this->assertSame(ImportBatchRowStatus::RESOLVED->value, $batch->rows()->sole()->status);
+        $this->assertSame('completed', $batch->refresh()->status);
+    }
+
+    private function batchWithFailedRow(string $status, bool $retryable = true): ImportBatch
     {
         $batch = ImportBatch::create([
             'filename' => 'products.csv',
             'format' => 'csv',
-            'status' => 'processing',
+            'status' => $status,
+            'total_rows' => 1,
             'failed_rows' => 1,
         ]);
 
-        Livewire::test(ViewImportBatch::class, ['record' => $batch->getRouteKey()])
-            ->assertActionVisible('retryFailedRows');
+        ImportBatchRow::recordFailure($batch->id, 2, [
+            'product_sku' => 'TSHIRT-001',
+            'product_name' => 'T-Shirt',
+            'product_status' => 'active',
+            'currency' => 'USD',
+            'variant_sku' => 'TSHIRT-001-RED-M',
+            'variant_name' => 'Red M',
+            'variant_price' => '19.99',
+            'variant_stock' => '10',
+            'attributes' => '',
+        ], 'Original failure', $retryable);
+
+        return $batch;
     }
 }

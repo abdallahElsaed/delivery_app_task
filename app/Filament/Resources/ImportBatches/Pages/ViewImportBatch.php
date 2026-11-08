@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\ImportBatches\Pages;
 
-use App\Enums\Import\ImportBatchRowStatus;
+use App\Actions\Import\RetryFailedImportRows;
+use App\Exceptions\ImportRetryRefusedException;
 use App\Filament\Resources\ImportBatches\ImportBatchResource;
-use App\Jobs\Import\ProcessProductImportChunk;
 use App\Models\ImportBatch;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -24,28 +24,21 @@ class ViewImportBatch extends ViewRecord
                 ->color('warning')
                 ->icon('heroicon-o-arrow-path')
                 ->requiresConfirmation()
-                ->visible(fn (ImportBatch $record) => $record->failed_rows > 0)
-                ->action(function (ImportBatch $record) {
-                    $failedRows = $record->failedRows()->get();
-
-                    if ($failedRows->isEmpty()) {
+                ->visible(fn (ImportBatch $record) => $record->hasFinished() && $record->failedRows()->exists())
+                ->action(function (ImportBatch $record, RetryFailedImportRows $retry) {
+                    try {
+                        $count = $retry->handle($record);
+                    } catch (ImportRetryRefusedException $e) {
                         Notification::make()
-                            ->title('No failed rows to retry.')
+                            ->title($e->getMessage())
                             ->warning()
                             ->send();
 
                         return;
                     }
 
-                    $record->failedRows()->update(['status' => ImportBatchRowStatus::RETRYING]);
-                    $rows = $failedRows->pluck('raw_data', 'row_number')->toArray();
-                    $record->decrement('failed_rows', $failedRows->count());
-
-                    ProcessProductImportChunk::dispatch($record->id, $rows, isRetry: true)
-                        ->onQueue('imports');
-
                     Notification::make()
-                        ->title("Retrying {$failedRows->count()} failed rows.")
+                        ->title("Retrying {$count} failed rows.")
                         ->success()
                         ->send();
                 }),

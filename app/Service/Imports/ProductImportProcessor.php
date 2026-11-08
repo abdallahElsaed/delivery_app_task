@@ -34,17 +34,7 @@ class ProductImportProcessor
             ->finally(function () use ($batchId) {
                 // A file-level failure has already marked the batch failed; a
                 // crashed last chunk completes it from its failed() hook.
-                $batch = ImportBatch::find($batchId);
-                if (! $batch?->completeIfFinished()) {
-                    return;
-                }
-
-                Log::channel('import')->info('Import batch completed', [
-                    'batch_id' => $batch->id,
-                    'total_rows' => $batch->total_rows,
-                    'processed_rows' => $batch->processed_rows,
-                    'failed_rows' => $batch->failed_rows,
-                ]);
+                ImportBatch::find($batchId)?->completeIfFinished();
             })
             ->name("Import: {$batch->filename}")
             ->onQueue('imports')

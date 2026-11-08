@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ImportBatches\RelationManagers;
 
 use App\Enums\Import\ImportBatchRowStatus;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,6 +30,8 @@ class RowsRelationManager extends RelationManager
                         'resolved' => 'success',
                         default => 'gray',
                     }),
+                IconColumn::make('retryable')
+                    ->boolean(),
                 TextColumn::make('error_message')
                     ->wrap()
                     ->limit(100),

@@ -30,16 +30,26 @@ class ProcessProductImportChunk implements ShouldQueue
     // shared batch row), so transactions that lose a deadlock are re-run.
     private const TRANSACTION_ATTEMPTS = 5;
 
-    // Declared rather than constructor-promoted so jobs queued before this
-    // flag existed still unserialize with a value (false).
-    private bool $isRetry = false;
+    /**
+     * On a retry, the failed-row record ID of each row, keyed like $rows.
+     * Declared rather than constructor-promoted so jobs queued before this
+     * existed still unserialize with a value (none).
+     *
+     * @var array<int, int>
+     */
+    private array $failedRowIds = [];
 
+    /**
+     * @param  array<int, array>  $rows  rows keyed by line number in the file,
+     *                                   or on a retry by failed-row record ID
+     * @param  array<int, int>  $failedRowIds  on a retry, each row's failed-row record ID
+     */
     public function __construct(
         private int $importBatchId,
         private array $rows,
-        bool $isRetry = false,
+        array $failedRowIds = [],
     ) {
-        $this->isRetry = $isRetry;
+        $this->failedRowIds = $failedRowIds;
     }
 
     public function handle(): void
@@ -52,17 +62,17 @@ class ProcessProductImportChunk implements ShouldQueue
         $startTime = microtime(true);
         $startMemory = memory_get_usage(true);
 
-        $processedCount = 0;
+        $importedKeys = [];
         $failures = [];
-        foreach ($this->rows as $rowNumber => $row) {
+        foreach ($this->rows as $key => $row) {
             try {
                 $this->transaction(fn () => $this->importProduct($row));
-                $processedCount++;
+                $importedKeys[] = $key;
             } catch (\Throwable $e) {
-                $failures[$rowNumber] = $e->getMessage();
+                $failures[$key] = $e->getMessage();
                 Log::channel('import')->error('Fail Job Row', [
                     'import_batch_id' => $this->importBatchId,
-                    'row_number' => $rowNumber,
+                    'row_key' => $key,
                     'raw_data' => $row,
                     'error_message' => $e->getMessage(),
                     'created_at' => now(),
@@ -72,13 +82,14 @@ class ProcessProductImportChunk implements ShouldQueue
 
         // Record outcomes once, at the end: if this attempt crashes before
         // here, the next attempt starts clean instead of duplicating rows.
-        $this->transaction(function () use ($processedCount, $failures) {
-            $this->countRows($processedCount, count($failures));
+        $this->transaction(function () use ($importedKeys, $failures) {
+            $this->countRows(count($importedKeys), count($failures));
             $this->recordFailures($failures);
+            $this->resolveRetriedRows($importedKeys);
         });
 
         Log::channel('import')->info('Job Finished', ['batch_id' => $this->importBatchId]);
-        $this->loggingPerformance($startTime, $startMemory, $processedCount, count($failures));
+        $this->loggingPerformance($startTime, $startMemory, count($importedKeys), count($failures));
     }
 
     /**
@@ -139,12 +150,36 @@ class ProcessProductImportChunk implements ShouldQueue
     }
 
     /**
-     * @param  array<int, string>  $failures  error message keyed by row number
+     * Record new failed rows, or on a retry put each row's own record back
+     * to failed with its new reason.
+     *
+     * @param  array<int, string>  $failures  error message keyed like $rows
      */
     private function recordFailures(array $failures): void
     {
-        foreach ($failures as $rowNumber => $message) {
-            ImportBatchRow::recordFailure($this->importBatchId, $rowNumber, $this->rows[$rowNumber], $message);
+        foreach ($failures as $key => $message) {
+            if (isset($this->failedRowIds[$key])) {
+                ImportBatchRow::whereKey($this->failedRowIds[$key])->update([
+                    'status' => ImportBatchRowStatus::FAILED,
+                    'error_message' => $message,
+                ]);
+
+                continue;
+            }
+
+            ImportBatchRow::recordFailure($this->importBatchId, $key, $this->rows[$key], $message);
+        }
+    }
+
+    /**
+     * @param  array<int>  $keys  keys of the rows that imported
+     */
+    private function resolveRetriedRows(array $keys): void
+    {
+        $ids = array_values(array_intersect_key($this->failedRowIds, array_flip($keys)));
+
+        if (! empty($ids)) {
+            ImportBatchRow::whereKey($ids)->update(['status' => ImportBatchRowStatus::RESOLVED]);
         }
     }
 
@@ -180,15 +215,6 @@ class ProcessProductImportChunk implements ShouldQueue
                 uniqueBy: ['product_variant_id', 'name'],
                 update: ['value']
             );
-        }
-
-        // Only a retry can have "retrying" rows to resolve; skip the JSON
-        // lookup on normal imports.
-        if ($this->isRetry) {
-            ImportBatchRow::where('import_batch_id', $this->importBatchId)
-                ->where('status', ImportBatchRowStatus::RETRYING)
-                ->whereJsonContains('raw_data->variant_sku', $row['variant_sku'])
-                ->update(['status' => ImportBatchRowStatus::RESOLVED]);
         }
     }
 

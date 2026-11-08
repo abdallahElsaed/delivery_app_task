@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Import\ImportBatchRowStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Log;
 
 class ImportBatch extends Model
 {
@@ -63,6 +64,14 @@ class ImportBatch extends Model
     }
 
     /**
+     * Completed or failed: nothing is queued or running for this batch.
+     */
+    public function hasFinished(): bool
+    {
+        return in_array($this->status, ['completed', 'failed'], true);
+    }
+
+    /**
      * Mark a processing batch completed once every row is accounted for.
      * Called from the job batch's finally callback and from a crashed chunk's
      * failed() hook, because Laravel runs finally before that hook.
@@ -77,6 +86,13 @@ class ImportBatch extends Model
         }
 
         $this->markAsCompleted();
+
+        Log::channel('import')->info('Import batch completed', [
+            'batch_id' => $this->id,
+            'total_rows' => $this->total_rows,
+            'processed_rows' => $this->processed_rows,
+            'failed_rows' => $this->failed_rows,
+        ]);
 
         return true;
     }
