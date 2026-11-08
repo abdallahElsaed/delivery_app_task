@@ -1,0 +1,19 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to an undefined method App\\Contracts\\Auth\\HasMobileLogin\:\:where\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Auth/CheckOtpAction.php
+
+		-
+			message: '#^Method App\\Models\\Customer\:\:findOrCreateByMobile\(\) should return static\(App\\Models\\Customer\) but returns App\\Models\\Customer\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Models/Customer.php
+
+		-
+			message: '#^Method App\\Models\\Driver\:\:findOrCreateByMobile\(\) should return static\(App\\Models\\Driver\) but returns App\\Models\\Driver\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Models/Driver.php

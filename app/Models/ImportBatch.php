@@ -26,11 +26,13 @@ class ImportBatch extends Model
         'finished_at' => 'datetime',
     ];
 
+    /** @return HasMany<ImportBatchRow, $this> */
     public function rows(): HasMany
     {
         return $this->hasMany(ImportBatchRow::class);
     }
 
+    /** @return HasMany<ImportBatchRow, $this> */
     public function failedRows(): HasMany
     {
         return $this->hasMany(ImportBatchRow::class)

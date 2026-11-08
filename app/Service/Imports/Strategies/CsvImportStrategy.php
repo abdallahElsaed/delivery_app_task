@@ -24,7 +24,7 @@ class CsvImportStrategy implements ImporterInterface
             SplFileObject::DROP_NEW_LINE
         );
         $header = $this->getHeader($file);
-        if (empty($header) || ! is_array($header) || $header === [null]) {
+        if (empty($header) || $header === [null]) {
             throw new InvalidArgumentException('Empty file: it has no header row.');
         }
 

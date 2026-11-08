@@ -7,6 +7,7 @@ use App\Exceptions\ImportRetryRefusedException;
 use App\Jobs\Import\ProcessProductImportChunk;
 use App\Models\ImportBatch;
 use App\Models\ImportBatchRow;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +52,7 @@ class RetryFailedImportRows
      * processing. The lock makes a second retry started at the same moment
      * see the batch as processing and be refused.
      *
-     * @return array{Collection<int, ImportBatchRow>, string} the rows and the batch's status before the retry
+     * @return array{EloquentCollection<int, ImportBatchRow>, string} the rows and the batch's status before the retry
      */
     private function claimFailedRows(int $batchId): array
     {

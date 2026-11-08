@@ -98,6 +98,26 @@ composer dev
 
 ---
 
+## Testing
+
+```bash
+composer test
+```
+
+Tests run on SQLite in-memory with the `sync` queue (see `phpunit.xml`). Any PHP deprecation fails the run.
+
+---
+
+## Code Quality
+
+```bash
+composer check
+```
+
+Runs Pint (formatting), Larastan level 5 (static analysis) and the test suite. `phpstan-baseline.neon` lists errors in code that predates Larastan. GitHub Actions runs `composer check` on every push and pull request.
+
+---
+
 ## Architecture
 
 ### Directory Structure

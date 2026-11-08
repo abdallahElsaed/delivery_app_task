@@ -1,0 +1,9 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    # Errors in code that predates Larastan; fix them rather than add to it.
+    - phpstan-baseline.neon
+
+parameters:
+    paths:
+        - app/
+    level: 5
