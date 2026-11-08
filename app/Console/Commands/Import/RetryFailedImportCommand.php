@@ -19,8 +19,9 @@ class RetryFailedImportCommand extends Command
 
         $batch = ImportBatch::find($batchId);
 
-        if (!$batch) {
+        if (! $batch) {
             $this->error("Import batch not found with ID: {$batchId}");
+
             return Command::FAILURE;
         }
 
@@ -28,6 +29,7 @@ class RetryFailedImportCommand extends Command
 
         if ($failedRows->isEmpty()) {
             $this->error("No failed rows found for batch ID: {$batchId}");
+
             return Command::FAILURE;
         }
         $batch->failedRows()->update(['status' => ImportBatchRowStatus::RETRYING]);
@@ -36,7 +38,7 @@ class RetryFailedImportCommand extends Command
 
         $batch->update(['failed_rows' => 0]);
 
-        ProcessProductImportChunk::dispatch($batch->id, $rows)
+        ProcessProductImportChunk::dispatch($batch->id, $rows, isRetry: true)
             ->onQueue('imports');
 
         $this->info("Retrying {$failedRows->count()} failed rows for batch ID: {$batchId}");

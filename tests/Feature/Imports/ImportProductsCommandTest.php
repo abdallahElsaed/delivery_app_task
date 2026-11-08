@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\VariantAttribute;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Monolog\Handler\NullHandler;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -72,6 +73,17 @@ class ImportProductsCommandTest extends TestCase
         $this->assertEquals(3, $variant->stock);
     }
 
+    public function test_configured_chunk_size_splits_the_import_into_that_many_rows_per_job(): void
+    {
+        config(['imports.chunk_size' => 1]);
+
+        $batch = $this->import('products_without_attributes.csv');
+
+        $this->assertSame(2, DB::table('job_batches')->sole()->total_jobs);
+        $this->assertSame('completed', $batch->status);
+        $this->assertSame(2, $batch->processed_rows);
+    }
+
     public function test_reimporting_a_file_updates_products_and_variants_instead_of_duplicating_them(): void
     {
         $this->import('products_without_attributes.csv');
@@ -82,24 +94,22 @@ class ImportProductsCommandTest extends TestCase
         $this->assertSame(2, ProductVariant::count());
     }
 
-    /**
-     * Current behaviour on SQLite: the attribute upsert has no unique index to
-     * target, so every row with attributes fails — after its product and
-     * variant were already saved (no transaction). On MySQL the same code
-     * inserts duplicate attributes instead. Phase 1 (unique index + per-row
-     * transaction) replaces this test.
-     */
-    public function test_rows_with_attributes_currently_fail_after_saving_product_and_variant(): void
+    public function test_reimporting_a_file_with_attributes_keeps_one_value_per_attribute(): void
     {
+        $this->import('products_with_attributes.csv');
         $batch = $this->import('products_with_attributes.csv');
 
-        $this->assertSame('completed', $batch->status);
-        $this->assertSame(0, $batch->processed_rows);
-        $this->assertSame(2, $batch->failed_rows);
+        $this->assertSame(2, $batch->processed_rows);
+        $this->assertSame(0, $batch->failed_rows);
         $this->assertSame(1, Product::count());
         $this->assertSame(2, ProductVariant::count());
-        $this->assertSame(0, VariantAttribute::count());
-        $this->assertStringContainsString('ON CONFLICT', $batch->rows()->first()->error_message);
+
+        $redM = ProductVariant::where('sku', 'TSHIRT-001-RED-M')->sole();
+        $this->assertSame(
+            ['color' => 'red', 'size' => 'M'],
+            VariantAttribute::where('product_variant_id', $redM->id)->orderBy('name')->pluck('value', 'name')->all(),
+        );
+        $this->assertSame(4, VariantAttribute::count());
     }
 
     public function test_missing_file_is_rejected_without_creating_a_batch(): void
@@ -156,14 +166,11 @@ class ImportProductsCommandTest extends TestCase
     }
 
     /**
-     * Current behaviour: the failed row is recorded, but its product is still
-     * saved because rows are not wrapped in a transaction (Phase 1 changes
-     * this). row_number is the row's 1-based position in its chunk; with a
-     * single chunk that equals its data-row position. The chunk-relative
-     * numbering bug only shows past the first chunk, which the command can't
-     * reach until chunk size is configurable — Phase 2 tests cover it.
+     * row_number is still the row's 1-based position in its chunk; with a
+     * single chunk that equals its data-row position. Phase 2 switches it to
+     * the real file line.
      */
-    public function test_failing_row_is_recorded_but_its_product_is_currently_still_saved(): void
+    public function test_failing_row_is_recorded_and_leaves_nothing_saved(): void
     {
         $batch = $this->import('second_row_missing_variant_sku.json');
 
@@ -177,8 +184,8 @@ class ImportProductsCommandTest extends TestCase
         $this->assertStringContainsString('variant_sku', $failed->error_message);
         $this->assertSame('MUG-001', $failed->raw_data['product_sku']);
 
-        $this->assertTrue(Product::where('sku', 'MUG-001')->exists());
-        $this->assertFalse(ProductVariant::where('product_id', Product::where('sku', 'MUG-001')->value('id'))->exists());
+        $this->assertFalse(Product::where('sku', 'MUG-001')->exists());
+        $this->assertSame(['TSHIRT-001'], Product::pluck('sku')->all());
     }
 
     /**

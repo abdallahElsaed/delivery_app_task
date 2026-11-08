@@ -11,8 +11,9 @@ class ProductImportProcessor
 {
     public function __construct(private ImporterFactory $factory) {}
 
-    public function handle(string $filePath, int $chunkSize = 500): ImportBatch // 50 for test
+    public function handle(string $filePath): ImportBatch
     {
+        $chunkSize = config('imports.chunk_size');
         $extension = strtolower((string) pathinfo($filePath, PATHINFO_EXTENSION));
 
         $batch = ImportBatch::create([

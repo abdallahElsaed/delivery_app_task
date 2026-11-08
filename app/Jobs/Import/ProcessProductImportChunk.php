@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ProcessProductImportChunk implements ShouldQueue
@@ -24,10 +25,17 @@ class ProcessProductImportChunk implements ShouldQueue
 
     public array $backoff = [10, 60];
 
+    // Declared rather than constructor-promoted so jobs queued before this
+    // flag existed still unserialize with a value (false).
+    private bool $isRetry = false;
+
     public function __construct(
         private int $importBatchId,
         private array $rows,
-    ) {}
+        bool $isRetry = false,
+    ) {
+        $this->isRetry = $isRetry;
+    }
 
     public function handle(): void
     {
@@ -39,7 +47,7 @@ class ProcessProductImportChunk implements ShouldQueue
         $failedCount = 0;
         foreach ($this->rows as $index => $row) {
             try {
-                $this->importProduct($row);
+                DB::transaction(fn () => $this->importProduct($row));
                 $processedCount++;
                 // logging Performance
             } catch (\Throwable $e) {
@@ -102,10 +110,15 @@ class ProcessProductImportChunk implements ShouldQueue
                 update: ['value']
             );
         }
-        ImportBatchRow::where('import_batch_id', $this->importBatchId)
-            ->where('status', ImportBatchRowStatus::RETRYING)
-            ->whereJsonContains('raw_data->variant_sku', $row['variant_sku'])
-            ->update(['status' => ImportBatchRowStatus::RESOLVED]);
+
+        // Only a retry can have "retrying" rows to resolve; skip the JSON
+        // lookup on normal imports.
+        if ($this->isRetry) {
+            ImportBatchRow::where('import_batch_id', $this->importBatchId)
+                ->where('status', ImportBatchRowStatus::RETRYING)
+                ->whereJsonContains('raw_data->variant_sku', $row['variant_sku'])
+                ->update(['status' => ImportBatchRowStatus::RESOLVED]);
+        }
     }
 
     private function parseAttributes(string $attributes): array

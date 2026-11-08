@@ -33,6 +33,7 @@ class ViewImportBatch extends ViewRecord
                             ->title('No failed rows to retry.')
                             ->warning()
                             ->send();
+
                         return;
                     }
 
@@ -40,7 +41,7 @@ class ViewImportBatch extends ViewRecord
                     $rows = $failedRows->pluck('raw_data')->toArray();
                     $record->update(['failed_rows' => 0]);
 
-                    ProcessProductImportChunk::dispatch($record->id, $rows)
+                    ProcessProductImportChunk::dispatch($record->id, $rows, isRetry: true)
                         ->onQueue('imports');
 
                     Notification::make()
