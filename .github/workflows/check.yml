@@ -18,6 +18,8 @@ jobs:
 
       - run: composer install --no-interaction --no-progress --prefer-dist
 
-      - run: cp .env.example .env && php artisan key:generate
+      # Only APP_KEY: .env.example leaves every key blank, and blank values
+      # override Laravel's defaults (e.g. cache store "") when Larastan boots the app.
+      - run: echo "APP_KEY=" > .env && php artisan key:generate
 
       - run: composer check
