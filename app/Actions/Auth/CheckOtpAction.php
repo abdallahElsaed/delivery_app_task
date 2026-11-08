@@ -2,7 +2,6 @@
 
 namespace App\Actions\Auth;
 
-use App\Actions\Auth\OtpVerificationRateLimiter;
 use App\Contracts\Auth\HasMobileLogin;
 use Illuminate\Support\Facades\Cache;
 
@@ -18,14 +17,14 @@ class CheckOtpAction
         $this->rateLimiter->attempt($mobile);
 
         // 2. Check if this mobile exists
-        $user = $model->where('mobile', $mobile)->first(['id','mobile','status']);
-        if (!$user) {
+        $user = $model->where('mobile', $mobile)->first(['id', 'mobile', 'status']);
+        if (! $user) {
             throw new \Exception('You must login first.');
         }
 
         // 3. Check if OTP exists in cache (not expired)
         $cachedOtp = Cache::get("login-otp_{$mobile}");
-        if (!$cachedOtp) {
+        if (! $cachedOtp) {
             throw new \Exception('OTP has expired. Please request a new one.');
         }
 
@@ -44,7 +43,7 @@ class CheckOtpAction
 
         // 8. Return user data and token
         return [
-            'user'  => $user,
+            'user' => $user,
             'token' => $token,
         ];
     }

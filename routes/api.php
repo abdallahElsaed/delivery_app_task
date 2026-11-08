@@ -9,13 +9,12 @@ use Illuminate\Support\Facades\Route;
 //     return $request->user();
 // })->middleware('auth:sanctum');
 
-
 //  =========================== Customer Routes ==========================
 
 Route::prefix('customer')->name('customer.')->middleware('throttle:5,10')->group(function () {
 
     // Public routes (no auth required)
-    Route::post('login',     [CustomerAuthController::class, 'login'])->name('login');
+    Route::post('login', [CustomerAuthController::class, 'login'])->name('login');
     Route::post('check-otp', [CustomerAuthController::class, 'checkOtp'])->name('check-otp');
 
     // Protected routes (auth required)
@@ -30,7 +29,7 @@ Route::prefix('customer')->name('customer.')->middleware('throttle:5,10')->group
 Route::prefix('driver')->name('driver.')->middleware('throttle:5,10')->group(function () {
 
     // Public routes (no auth required)
-    Route::post('login',     [DriversAuthController::class, 'login'])->name('login');
+    Route::post('login', [DriversAuthController::class, 'login'])->name('login');
     Route::post('check-otp', [DriversAuthController::class, 'checkOtp'])->name('check-otp');
 
     // Protected routes (auth required)

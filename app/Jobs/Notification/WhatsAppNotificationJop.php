@@ -7,11 +7,9 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Twilio\Rest\Client;
 
-
 class WhatsAppNotificationJop implements ShouldQueue
 {
     use Queueable;
-
 
     public function __construct(
         protected string $mobile,

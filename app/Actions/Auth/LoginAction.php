@@ -2,14 +2,11 @@
 
 namespace App\Actions\Auth;
 
-use App\Actions\Auth\OtpRateLimiter;
 use App\Contracts\Auth\HasMobileLogin;
 use App\Jobs\Notification\SmsNotificationJop;
 use App\Jobs\Notification\WhatsAppNotificationJop;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Twilio\Rest\Client;
-
 
 class LoginAction
 {
@@ -27,7 +24,7 @@ class LoginAction
         $otp = rand(1000, 9999);
         Log::channel('auth')->info('OTP generated', [
             'mobile' => $mobile,
-            'otp'    => app()->environment('local', 'testing') ? $otp : '****',
+            'otp' => app()->environment('local', 'testing') ? $otp : '****',
         ]);
         // 4. Store OTP in cache with 5 min expiration
         Cache::put("login-otp_{$mobile}", $otp, now()->addMinutes(5));

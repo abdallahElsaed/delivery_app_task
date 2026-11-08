@@ -21,20 +21,20 @@ class LogApiRequests
         $duration = round((microtime(true) - $startTime) * 1000, 2);
 
         $context = [
-            'method'      => $request->method(),
-            'url'         => $request->fullUrl(),
-            'ip'          => $request->ip(),
-            'user_id'     => $request->user()?->id,
-            'user_type'   => $request->user() ? get_class($request->user()) : null,
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'ip' => $request->ip(),
+            'user_id' => $request->user()?->id,
+            'user_type' => $request->user() ? get_class($request->user()) : null,
             'status_code' => $statusCode,
             'duration_ms' => $duration,
-            'payload'     => $request->except(self::SENSITIVE_FIELDS),
+            'payload' => $request->except(self::SENSITIVE_FIELDS),
         ];
 
         $level = match (true) {
             $statusCode >= 500 => 'error',
             $statusCode >= 400 => 'warning',
-            default            => 'info',
+            default => 'info',
         };
 
         Log::channel('api')->{$level}('API Request', $context);

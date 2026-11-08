@@ -15,38 +15,43 @@ use Illuminate\Support\Facades\Log;
 
 class CustomerAuthController extends Controller
 {
-    public function __construct(protected Customer $customer ){}
+    public function __construct(protected Customer $customer) {}
+
     public function login(CustomerRequest $request, LoginAction $loginAction): JsonResponse
     {
         try {
             $mobile = $request->validated()['mobile'];
             $loginAction->handle($mobile, $this->customer);
             Log::channel('auth')->info('OTP sent', ['mobile' => $mobile, 'guard' => 'customer']);
-            return $this->successResponse([] ,'I send the OTP to your sms and whatsApp');
+
+            return $this->successResponse([], 'I send the OTP to your sms and whatsApp');
         } catch (TooManyOtpAttemptsException $e) {
             Log::channel('auth')->error('To Many OTP Attempt Error', [
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ]);
+
             return $this->errorResponse(
                 $e->getMessage(),
                 false,
                 400,
-                ['available_in'=>$e->availableIn]
+                ['available_in' => $e->availableIn]
             );
         }
     }
 
-    public function checkOtp(LoginOtpRequest $request, CheckOtpAction $checkOtpAction) :JsonResponse
+    public function checkOtp(LoginOtpRequest $request, CheckOtpAction $checkOtpAction): JsonResponse
     {
         $request = $request->validated();
         try {
             $data = $checkOtpAction->handle($request['mobile'], $request['otp'], $this->customer);
             Log::channel('auth')->info('OTP verified', ['mobile' => $request['mobile'], 'user_id' => $data['user']->id, 'guard' => 'customer']);
-            return $this->successResponse($data ,'You Logged In Successfully.');
+
+            return $this->successResponse($data, 'You Logged In Successfully.');
         } catch (Exception $e) {
             Log::channel('auth')->error('Check OTP Error', [
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ]);
+
             return $this->errorResponse(
                 $e->getMessage(),
             );
