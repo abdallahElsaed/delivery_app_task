@@ -17,14 +17,14 @@ class ProductImportProcessor
 
         $batch = ImportBatch::create([
             'filename' => basename($filePath),
-            'format'   => $extension,
+            'format' => $extension,
         ]);
         $batch->markAsProcessing();
 
         Log::channel('import')->info('Import batch started', [
             'batch_id' => $batch->id,
             'filename' => $batch->filename,
-            'format'   => $extension,
+            'format' => $extension,
         ]);
 
         $strategy = $this->factory->make($extension);
@@ -34,17 +34,17 @@ class ProductImportProcessor
                 $batch->refresh();
                 $batch->markAsCompleted();
                 Log::channel('import')->info('Import batch completed', [
-                    'batch_id'       => $batch->id,
-                    'total_rows'     => $batch->total_rows,
+                    'batch_id' => $batch->id,
+                    'total_rows' => $batch->total_rows,
                     'processed_rows' => $batch->processed_rows,
-                    'failed_rows'    => $batch->failed_rows,
+                    'failed_rows' => $batch->failed_rows,
                 ]);
             })
             ->catch(function () use ($batch) {
                 $batch->refresh();
                 $batch->markAsFailed();
                 Log::channel('import')->error('Import batch failed', [
-                    'batch_id'    => $batch->id,
+                    'batch_id' => $batch->id,
                     'failed_rows' => $batch->failed_rows,
                 ]);
             })
@@ -65,7 +65,7 @@ class ProductImportProcessor
             }
         }
 
-        if (!empty($currentChunk)) {
+        if (! empty($currentChunk)) {
             $busBatch->add(new ProcessProductImportChunk($batch->id, $currentChunk));
         }
 

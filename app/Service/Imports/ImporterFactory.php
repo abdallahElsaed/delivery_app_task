@@ -17,7 +17,7 @@ class ImporterFactory
      * @var array<string, class-string<ImporterInterface>>
      */
     private const STRATEGY_MAP = [
-        'csv'  => CsvImportStrategy::class,
+        'csv' => CsvImportStrategy::class,
         'json' => JsonImportStrategy::class,
     ];
 
@@ -34,7 +34,7 @@ class ImporterFactory
             throw new InvalidArgumentException("File format '{$extension}' is not supported.");
         }
 
-        if (!is_subclass_of($strategyClass, ImporterInterface::class)) {
+        if (! is_subclass_of($strategyClass, ImporterInterface::class)) {
             throw new InvalidArgumentException("Importer for '{$extension}' is not supported.");
         }
 

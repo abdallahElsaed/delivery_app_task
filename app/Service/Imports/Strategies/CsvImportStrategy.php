@@ -17,13 +17,13 @@ class CsvImportStrategy implements ImporterInterface
             SplFileObject::DROP_NEW_LINE
         );
         $header = $this->getHeader($file);
-        if (empty($header) || !is_array($header)) {
+        if (empty($header) || ! is_array($header)) {
             throw new InvalidArgumentException("Invalid or empty CSV file: {$filePath}");
         }
 
         $file->seek(1); // to skip the header line
 
-        while(!$file->eof()){
+        while (! $file->eof()) {
             $row = $file->current();
             if (is_array($row) && count($header) === count($row)) {
                 yield array_combine($header, $row);
@@ -31,12 +31,13 @@ class CsvImportStrategy implements ImporterInterface
             $file->next();
         }
     }
+
     private function getHeader(SplFileObject $file): array
     {
         $file->rewind();
-        return $file->current()?: [];
-    }
 
+        return $file->current() ?: [];
+    }
 }
 
 // /Users/abdallahelsaed/Herd/delivery_app_task/storage/app/imports/products_test_v2.csv
