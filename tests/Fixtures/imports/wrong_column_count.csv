@@ -1,0 +1,4 @@
+product_sku,product_name,product_status,currency,variant_sku,variant_name,variant_price,variant_stock,attributes
+TSHIRT-001,T-Shirt,active,USD,TSHIRT-001-RED-M,Red M,19.99,10,
+MUG-001,Mug,active,EUR,MUG-001-WHITE,White,7.50,3,,unexpected-extra-column
+CAP-001,Cap,active,USD,CAP-001-BLACK,Black,12.00,8,
