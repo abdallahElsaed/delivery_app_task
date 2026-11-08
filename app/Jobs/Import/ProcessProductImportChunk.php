@@ -11,6 +11,7 @@ use App\Models\VariantAttribute;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\DetectsConcurrencyErrors;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -19,11 +20,15 @@ use Illuminate\Support\Facades\Log;
 
 class ProcessProductImportChunk implements ShouldQueue
 {
-    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Batchable, DetectsConcurrencyErrors, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
     public array $backoff = [10, 60];
+
+    // Parallel chunks deadlock in MySQL (concurrent attribute upserts, and the
+    // shared batch row), so transactions that lose a deadlock are re-run.
+    private const TRANSACTION_ATTEMPTS = 5;
 
     // Declared rather than constructor-promoted so jobs queued before this
     // flag existed still unserialize with a value (false).
@@ -39,42 +44,108 @@ class ProcessProductImportChunk implements ShouldQueue
 
     public function handle(): void
     {
+        // The file read failed part-way and cancelled the import.
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
         $startTime = microtime(true);
         $startMemory = memory_get_usage(true);
-        $batch = ImportBatch::find($this->importBatchId);
 
         $processedCount = 0;
-        $failedCount = 0;
-        foreach ($this->rows as $index => $row) {
+        $failures = [];
+        foreach ($this->rows as $rowNumber => $row) {
             try {
-                DB::transaction(fn () => $this->importProduct($row));
+                $this->transaction(fn () => $this->importProduct($row));
                 $processedCount++;
-                // logging Performance
             } catch (\Throwable $e) {
-                $failedCount++;
+                $failures[$rowNumber] = $e->getMessage();
                 Log::channel('import')->error('Fail Job Row', [
                     'import_batch_id' => $this->importBatchId,
-                    'row_number' => $index + 1,
+                    'row_number' => $rowNumber,
                     'raw_data' => $row,
                     'error_message' => $e->getMessage(),
-                    'created_at' => now(),
-                ]);
-
-                ImportBatchRow::create([
-                    'import_batch_id' => $this->importBatchId,
-                    'row_number' => $index + 1,
-                    'raw_data' => $row,
-                    'error_message' => $e->getMessage(),
-                    'status' => ImportBatchRowStatus::FAILED,
                     'created_at' => now(),
                 ]);
             }
         }
 
-        $batch->increment('processed_rows', $processedCount);
-        $batch->increment('failed_rows', $failedCount);
-        Log::channel('import')->info('Job Finished', [$batch]);
-        $this->loggingPerformance($startTime, $startMemory, $processedCount, $failedCount);
+        // Record outcomes once, at the end: if this attempt crashes before
+        // here, the next attempt starts clean instead of duplicating rows.
+        $this->transaction(function () use ($processedCount, $failures) {
+            $this->countRows($processedCount, count($failures));
+            $this->recordFailures($failures);
+        });
+
+        Log::channel('import')->info('Job Finished', ['batch_id' => $this->importBatchId]);
+        $this->loggingPerformance($startTime, $startMemory, $processedCount, count($failures));
+    }
+
+    /**
+     * The chunk exhausted its attempts (e.g. the database went away): record
+     * every row as a retryable failure so the import can finish and the rows
+     * can be retried. Rows saved before the crash are re-saved idempotently.
+     */
+    public function failed(\Throwable $e): void
+    {
+        $reason = "Processing error: {$e->getMessage()}";
+
+        $this->transaction(function () use ($reason) {
+            $this->countRows(0, count($this->rows));
+            $this->recordFailures(array_fill_keys(array_keys($this->rows), $reason));
+        });
+
+        Log::channel('import')->error('Chunk failed', [
+            'batch_id' => $this->importBatchId,
+            'rows' => count($this->rows),
+            'error_message' => $e->getMessage(),
+        ]);
+
+        ImportBatch::find($this->importBatchId)?->completeIfFinished();
+    }
+
+    /**
+     * Run a transaction, re-running it after a short random pause when it
+     * loses a deadlock. Laravel's own retry re-runs immediately, so two
+     * colliding workers tend to collide again.
+     */
+    private function transaction(callable $callback): void
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                DB::transaction($callback);
+
+                return;
+            } catch (\Throwable $e) {
+                if ($attempt >= self::TRANSACTION_ATTEMPTS || ! $this->causedByConcurrencyError($e)) {
+                    throw $e;
+                }
+                usleep(random_int(10_000, 50_000) * $attempt);
+            }
+        }
+    }
+
+    /**
+     * Update the batch counters. Called before inserting failed rows: their
+     * foreign key share-locks the batch row, and taking the exclusive lock
+     * first stops two chunks from deadlocking on the upgrade.
+     */
+    private function countRows(int $processed, int $failed): void
+    {
+        ImportBatch::whereKey($this->importBatchId)->incrementEach([
+            'processed_rows' => $processed,
+            'failed_rows' => $failed,
+        ]);
+    }
+
+    /**
+     * @param  array<int, string>  $failures  error message keyed by row number
+     */
+    private function recordFailures(array $failures): void
+    {
+        foreach ($failures as $rowNumber => $message) {
+            ImportBatchRow::recordFailure($this->importBatchId, $rowNumber, $this->rows[$rowNumber], $message);
+        }
     }
 
     private function importProduct(array $row): void

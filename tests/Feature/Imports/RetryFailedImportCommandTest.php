@@ -81,6 +81,40 @@ class RetryFailedImportCommandTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_rows_marked_not_retryable_are_skipped_by_retry(): void
+    {
+        $batch = $this->batchWithFailedRow($this->validRow());
+        $batch->rows()->update(['retryable' => false]);
+
+        $this->artisan('import:retry', ['batchId' => $batch->id])
+            ->expectsOutputToContain("No failed rows found for batch ID: {$batch->id}")
+            ->assertFailed();
+
+        $this->assertSame(ImportBatchRowStatus::FAILED->value, $batch->rows()->sole()->status);
+        $this->assertFalse(Product::where('sku', 'TSHIRT-001')->exists());
+    }
+
+    public function test_retry_keeps_rows_that_cannot_be_retried_in_the_failed_count(): void
+    {
+        $batch = $this->batchWithFailedRow($this->validRow());
+        $batch->update(['total_rows' => 2, 'failed_rows' => 2]);
+        ImportBatchRow::create([
+            'import_batch_id' => $batch->id,
+            'row_number' => 2,
+            'raw_data' => $this->validRow(),
+            'error_message' => 'Duplicate variant_sku in this file',
+            'status' => ImportBatchRowStatus::FAILED,
+            'retryable' => false,
+            'created_at' => now(),
+        ]);
+
+        $this->artisan('import:retry', ['batchId' => $batch->id])->assertSuccessful();
+
+        $batch->refresh();
+        $this->assertSame(1, $batch->processed_rows);
+        $this->assertSame(1, $batch->failed_rows);
+    }
+
     public function test_retried_row_that_now_succeeds_is_resolved_and_counted_as_processed(): void
     {
         $batch = $this->batchWithFailedRow($this->validRow());

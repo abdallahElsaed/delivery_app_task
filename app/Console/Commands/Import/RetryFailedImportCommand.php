@@ -34,9 +34,9 @@ class RetryFailedImportCommand extends Command
         }
         $batch->failedRows()->update(['status' => ImportBatchRowStatus::RETRYING]);
 
-        $rows = $failedRows->pluck('raw_data')->toArray();
+        $rows = $failedRows->pluck('raw_data', 'row_number')->toArray();
 
-        $batch->update(['failed_rows' => 0]);
+        $batch->decrement('failed_rows', $failedRows->count());
 
         ProcessProductImportChunk::dispatch($batch->id, $rows, isRetry: true)
             ->onQueue('imports');

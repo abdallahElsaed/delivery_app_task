@@ -64,6 +64,19 @@ class ImportBatchAdminPagesTest extends TestCase
         $this->assertSame(2, $batch->total_rows);
     }
 
+    public function test_failed_batch_page_shows_why_it_failed(): void
+    {
+        $batch = ImportBatch::create([
+            'filename' => 'products.txt',
+            'format' => 'txt',
+            'status' => 'failed',
+            'error_message' => "File format 'txt' is not supported.",
+        ]);
+
+        Livewire::test(ViewImportBatch::class, ['record' => $batch->getRouteKey()])
+            ->assertSee("File format 'txt' is not supported.");
+    }
+
     public function test_retry_action_is_hidden_when_nothing_failed(): void
     {
         $batch = ImportBatch::create(['filename' => 'products.csv', 'format' => 'csv', 'status' => 'completed']);

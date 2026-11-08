@@ -1,0 +1,4 @@
+product_sku,product_name,product_status,currency,variant_sku,variant_name,variant_price,variant_stock,attributes
+TSHIRT-001,T-Shirt,active,USD,TSHIRT-001-RED-M,Red M,19.99,10,
+TSHIRT-001,Tee,active,USD,TSHIRT-001-BLU-L,Blue L,21.50,5,
+TSHIRT-001,T-Shirt,active,USD,TSHIRT-001-GRN-S,Green S,18.00,7,

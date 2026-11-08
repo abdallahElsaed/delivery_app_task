@@ -28,24 +28,32 @@ class ImportProductsCommand extends Command
     {
         $filePath = $this->argument('filePath');
 
-        if (!file_exists($filePath)) {
+        if (! file_exists($filePath)) {
             $this->error("File not found: {$filePath}");
+
             return Command::FAILURE;
         }
 
         try {
             $batch = $processor->handle($filePath);
 
-            $this->info('Import dispatched successfully.');
+            // On a synchronous queue the file has already been read by now.
+            if ($batch->isFailed()) {
+                $this->error("Import failed: {$batch->error_message}");
+                $this->info("Batch ID: {$batch->id}");
+
+                return Command::FAILURE;
+            }
+
+            $this->info('Import queued successfully.');
             $this->info("Batch ID: {$batch->id}");
-            $this->info("Total rows queued: {$batch->total_rows}");
 
             return Command::SUCCESS;
 
         } catch (\Throwable $e) {
             $this->error("Import failed: {$e->getMessage()}");
+
             return Command::FAILURE;
         }
     }
-
 }

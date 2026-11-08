@@ -38,8 +38,8 @@ class ViewImportBatch extends ViewRecord
                     }
 
                     $record->failedRows()->update(['status' => ImportBatchRowStatus::RETRYING]);
-                    $rows = $failedRows->pluck('raw_data')->toArray();
-                    $record->update(['failed_rows' => 0]);
+                    $rows = $failedRows->pluck('raw_data', 'row_number')->toArray();
+                    $record->decrement('failed_rows', $failedRows->count());
 
                     ProcessProductImportChunk::dispatch($record->id, $rows, isRetry: true)
                         ->onQueue('imports');
