@@ -13,11 +13,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * Characterisation tests for `import:products` (Phase 0 of
- * .scratch/product-import-hardening/spec.md).
- *
- * Tests named "..._currently_..." pin down known-bad behaviour; the phase
- * named in each docblock replaces them with the specified behaviour.
+ * Behaviour of `import:products`, as specified in
+ * .scratch/product-import-hardening/spec.md.
  */
 class ImportProductsCommandTest extends TestCase
 {
@@ -37,6 +34,12 @@ class ImportProductsCommandTest extends TestCase
             ->assertSuccessful();
 
         return ImportBatch::latest('id')->firstOrFail();
+    }
+
+    private function attributesOf(string $variantSku): array
+    {
+        return ProductVariant::where('sku', $variantSku)->sole()
+            ->attributes()->orderBy('name')->pluck('value', 'name')->all();
     }
 
     public static function supportedFormats(): array
@@ -111,6 +114,24 @@ class ImportProductsCommandTest extends TestCase
             VariantAttribute::where('product_variant_id', $redM->id)->orderBy('name')->pluck('value', 'name')->all(),
         );
         $this->assertSame(4, VariantAttribute::count());
+    }
+
+    public function test_file_replaces_the_attributes_of_the_variants_it_contains(): void
+    {
+        $this->import('products_with_attributes.csv');
+        $this->import('changed_attributes.csv');
+
+        $this->assertSame(['color' => 'green', 'material' => 'cotton'], $this->attributesOf('TSHIRT-001-RED-M'));
+        $this->assertSame(['color' => 'blue', 'size' => 'L'], $this->attributesOf('TSHIRT-001-BLU-L'));
+    }
+
+    public function test_empty_attributes_cell_removes_the_variants_attributes(): void
+    {
+        $this->import('products_with_attributes.csv');
+        $this->import('products_without_attributes.csv');
+
+        $this->assertSame([], $this->attributesOf('TSHIRT-001-RED-M'));
+        $this->assertSame(['color' => 'blue', 'size' => 'L'], $this->attributesOf('TSHIRT-001-BLU-L'));
     }
 
     public function test_missing_file_is_rejected_without_creating_a_batch(): void
@@ -247,33 +268,67 @@ class ImportProductsCommandTest extends TestCase
         $this->assertSame(['TSHIRT-001'], Product::pluck('sku')->all());
     }
 
-    /**
-     * Current behaviour: row values are saved without validation. Phase 4
-     * rejects unknown statuses and non-uppercase currencies.
-     */
-    public function test_invalid_status_and_currency_are_currently_saved_as_given(): void
+    public function test_rows_at_the_limits_of_every_rule_are_imported(): void
     {
         $batch = $this->import('invalid_values.csv');
 
-        $this->assertSame(1, $batch->processed_rows);
-        $product = Product::sole();
-        $this->assertSame('archived', $product->status);
-        $this->assertSame('usd', $product->currency);
+        $this->assertSame(2, $batch->processed_rows);
+        $this->assertSame(17, $batch->failed_rows);
+        $this->assertSame('draft', ProductVariant::where('sku', 'LIMIT-1')->sole()->product->status);
+        $this->assertSame(['size' => 'M', 'url' => 'http://x.test'], $this->attributesOf('LIMIT-2-V'));
     }
 
-    /**
-     * Current behaviour: a later import that puts an existing variant SKU
-     * under another product silently moves it. Phase 4 fails the row instead.
-     */
-    public function test_variant_sku_used_by_another_product_is_currently_moved_to_it(): void
+    public static function brokenRules(): array
+    {
+        return [
+            'missing name' => [4, 'The product_name field is required.'],
+            'sku too long' => [5, 'The product_sku field must not be greater than 255 characters.'],
+            'unknown status' => [6, 'The product_status must be active, inactive or draft.'],
+            'lowercase currency' => [7, 'The currency must be 3 uppercase letters.'],
+            'three decimals' => [8, 'The variant_price field must have 0-2 decimal places.'],
+            'price too high' => [9, 'The variant_price field must not be greater than 99999999.99.'],
+            'negative price' => [10, 'The variant_price field must be at least 0.'],
+            'price not a number' => [11, 'The variant_price field must be a number.'],
+            'fractional stock' => [12, 'The variant_stock field must be an integer.'],
+            'negative stock' => [13, 'The variant_stock field must be at least 0.'],
+            'attribute without colon' => [14, "Attribute 'color-red' is not a key:value pair with a key and a value."],
+            'attribute without value' => [15, "Attribute 'color:' is not a key:value pair with a key and a value."],
+            'attribute without key' => [16, "Attribute ':red' is not a key:value pair with a key and a value."],
+            'attribute value too long' => [17, 'Attribute note is longer than 255 characters.'],
+            'attribute key twice' => [18, 'Attribute color appears more than once.'],
+            'stock beyond the column' => [19, 'The variant_stock field must not be greater than 2147483647.'],
+            'currency with a trailing newline' => [20, 'The currency must be 3 uppercase letters.'],
+        ];
+    }
+
+    #[DataProvider('brokenRules')]
+    public function test_row_that_breaks_a_rule_fails_with_the_reason_and_saves_nothing(int $line, string $reason): void
+    {
+        $batch = $this->import('invalid_values.csv');
+
+        $failed = $batch->rows()->where('row_number', $line)->sole();
+        $this->assertSame($reason, $failed->error_message);
+        $this->assertTrue($failed->retryable);
+        $this->assertFalse(ProductVariant::where('sku', $failed->raw_data['variant_sku'])->exists());
+    }
+
+    public function test_variant_sku_that_belongs_to_another_product_fails_the_row(): void
     {
         $this->import('products_without_attributes.csv');
         $batch = $this->import('variant_sku_under_another_product.csv');
 
-        $this->assertSame(1, $batch->processed_rows);
+        $this->assertSame(0, $batch->processed_rows);
+        $this->assertSame(1, $batch->failed_rows);
+
+        $failed = $batch->rows()->sole();
+        $this->assertSame(2, $failed->row_number);
+        $this->assertSame('Variant TSHIRT-001-RED-M already belongs to product TSHIRT-001.', $failed->error_message);
+        $this->assertTrue($failed->retryable);
+
         $variant = ProductVariant::where('sku', 'TSHIRT-001-RED-M')->sole();
-        $this->assertSame(Product::where('sku', 'HOODIE-001')->value('id'), $variant->product_id);
-        $this->assertEquals(49.99, $variant->price);
+        $this->assertSame('TSHIRT-001', $variant->product->sku);
+        $this->assertEquals(19.99, $variant->price);
+        $this->assertFalse(Product::where('sku', 'HOODIE-001')->exists());
     }
 
     public function test_repeated_variant_sku_in_one_file_fails_later_rows_without_retry(): void

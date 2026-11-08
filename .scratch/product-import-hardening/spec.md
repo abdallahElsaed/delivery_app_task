@@ -52,7 +52,7 @@ Imports become correct, idempotent, observable and fast, with no change to the C
 
 17. As an admin, I want each row validated before it touches the database, so that bad values are reported clearly instead of as PHP or SQL errors.
 18. As an admin, I want rows with a missing or overly long SKU or name to fail with a reason, so that I can fix them.
-19. As an admin, I want `product_status` limited to `active` or `inactive`, so that products never get unknown statuses.
+19. As an admin, I want `product_status` limited to `active`, `inactive` or `draft`, so that products never get unknown statuses. (`draft` added during Phase 4: a third of the sample 100k file uses it.)
 20. As an admin, I want `currency` to be exactly 3 uppercase letters, so that prices are interpretable.
 21. As an admin, I want `variant_price` to be a number from 0 to 99,999,999.99 with at most 2 decimal places, so that prices are never silently truncated or rejected by the database.
 22. As an admin, I want `variant_stock` to be a whole number of at least 0, so that stock is never negative or fractional.

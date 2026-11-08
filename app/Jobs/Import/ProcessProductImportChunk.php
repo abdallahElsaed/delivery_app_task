@@ -3,15 +3,18 @@
 namespace App\Jobs\Import;
 
 use App\Enums\Import\ImportBatchRowStatus;
+use App\Exceptions\ImportRowRejectedException;
 use App\Models\ImportBatch;
 use App\Models\ImportBatchRow;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\VariantAttribute;
+use App\Service\Imports\ProductImportRowValidator;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\DetectsConcurrencyErrors;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -26,8 +29,8 @@ class ProcessProductImportChunk implements ShouldQueue
 
     public array $backoff = [10, 60];
 
-    // Parallel chunks deadlock in MySQL (concurrent attribute upserts, and the
-    // shared batch row), so transactions that lose a deadlock are re-run.
+    // Parallel chunks can deadlock in MySQL on the shared batch row, so
+    // transactions that lose a deadlock are re-run.
     private const TRANSACTION_ATTEMPTS = 5;
 
     /**
@@ -66,7 +69,8 @@ class ProcessProductImportChunk implements ShouldQueue
         $failures = [];
         foreach ($this->rows as $key => $row) {
             try {
-                $this->transaction(fn () => $this->importProduct($row));
+                $validRow = ProductImportRowValidator::validate($row);
+                $this->transaction(fn () => $this->importProduct($validRow));
                 $importedKeys[] = $key;
             } catch (\Throwable $e) {
                 $failures[$key] = $e->getMessage();
@@ -183,6 +187,9 @@ class ProcessProductImportChunk implements ShouldQueue
         }
     }
 
+    /**
+     * @param  array  $row  a row returned by ProductImportRowValidator
+     */
     private function importProduct(array $row): void
     {
         $product = Product::updateOrCreate(
@@ -193,51 +200,72 @@ class ProcessProductImportChunk implements ShouldQueue
                 'currency' => $row['currency'],
             ]
         );
-        $variant = ProductVariant::updateOrCreate(
-            ['sku' => $row['variant_sku']],
-            [
-                'product_id' => $product->id,
-                'name' => $row['variant_name'],
-                'price' => $row['variant_price'],
-                'stock' => $row['variant_stock'],
-            ]
-        );
-        $attributes = $this->parseAttributes($row['attributes'] ?? '');
+        $variant = ProductVariant::firstOrNew(['sku' => $row['variant_sku']]);
 
-        if (! empty($attributes)) {
-            VariantAttribute::upsert(
-                array_map(fn ($attr) => [
-                    'product_variant_id' => $variant->id,
-                    'product_id' => $product->id,
-                    'name' => $attr['attribute_key'],
-                    'value' => $attr['attribute_value'],
-                ], $attributes),
-                uniqueBy: ['product_variant_id', 'name'],
-                update: ['value']
+        // Variants never move between products.
+        if ($variant->exists && $variant->product_id !== $product->id) {
+            throw new ImportRowRejectedException(
+                "Variant {$variant->sku} already belongs to product {$variant->product->sku}."
             );
         }
+
+        $variant->fill([
+            'product_id' => $product->id,
+            'name' => $row['variant_name'],
+            'price' => $row['variant_price'],
+            'stock' => $row['variant_stock'],
+        ])->save();
+        $this->replaceAttributes($variant, $row['attributes']);
     }
 
-    private function parseAttributes(string $attributes): array
+    /**
+     * Make the variant's attributes exactly the given ones. Rows are written
+     * by primary key or plainly inserted rather than upserted: concurrent
+     * upserts on the (variant, name) index deadlock in MySQL.
+     *
+     * @param  array<string, string>  $attributes  value keyed by name
+     */
+    private function replaceAttributes(ProductVariant $variant, array $attributes): void
     {
-        if (empty(trim($attributes))) {
-            return [];
+        $existing = $variant->attributes()->get(['id', 'name', 'value'])->keyBy('name');
+
+        $removed = $existing->diffKeys($attributes);
+        if ($removed->isNotEmpty()) {
+            VariantAttribute::whereKey($removed->modelKeys())->delete();
         }
 
-        $result = [];
+        $now = now();
+        $new = [];
+        foreach ($attributes as $name => $value) {
+            $current = $existing->get($name);
 
-        foreach (explode('|', $attributes) as $pair) {
-            $parts = explode(':', $pair, 2);
-
-            if (count($parts) === 2) {
-                $result[] = [
-                    'attribute_key' => trim($parts[0]),
-                    'attribute_value' => trim($parts[1]),
+            if ($current === null) {
+                $new[] = [
+                    'product_variant_id' => $variant->id,
+                    'product_id' => $variant->product_id,
+                    'name' => $name,
+                    'value' => $value,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
+            } elseif ($current->value !== $value) {
+                $current->update(['value' => $value]);
             }
         }
 
-        return $result;
+        if (empty($new)) {
+            return;
+        }
+
+        try {
+            VariantAttribute::insert($new);
+        } catch (UniqueConstraintViolationException) {
+            // The validator compares names ignoring case only; MySQL's
+            // collation also ignores accents, e.g. "size" and "sizé".
+            throw new ImportRowRejectedException(
+                'Two attributes in this row count as the same name (names are compared ignoring case and accents).'
+            );
+        }
     }
 
     private function loggingPerformance(float $startTime, int $startMemory, int $processedCount, int $failedCount): void
